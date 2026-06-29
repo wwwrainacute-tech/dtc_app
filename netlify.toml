@@ -1,5 +1,5 @@
 [build]
-  command = "cd dare-to-care-forms && npm run build"
+  command = "cd server && npm install && cd ../dare-to-care-forms && npm install && npm run build"
   publish = "dare-to-care-forms/dist"
 
 [functions]
