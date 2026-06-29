@@ -1,0 +1,895 @@
+{
+  "documentType": "ADD - App Design Document / Claude implementation handoff",
+  "product": "Dare to Care Forms Platform",
+  "sourceFacts": {
+    "prototypeFramework": "Browser React prototype loaded through index.html and Babel scripts",
+    "currentRoles": [
+      "Admin",
+      "Office Manager",
+      "Caregiver"
+    ],
+    "mockAiUploadQueue": [
+      "fallRisk",
+      "medicationList"
+    ],
+    "publishedSeedData": "None; runtime state starts empty in prototype."
+  },
+  "roles": [
+    {
+      "role": "Admin",
+      "purpose": "Owns template creation, PDF upload/import, publishing, users, clients, and audit review.",
+      "nav": [
+        "Dashboard",
+        "Templates",
+        "Upload PDF",
+        "Users",
+        "Clients",
+        "Audit log"
+      ],
+      "must_do": [
+        "Upload a reference PDF",
+        "Review extracted fields",
+        "Edit/approve a template",
+        "Publish template",
+        "Add/manage clients",
+        "View audit log"
+      ]
+    },
+    {
+      "role": "Office Manager",
+      "purpose": "Reviews submissions, manages clients/team visibility, and handles supervisory/operations records.",
+      "nav": [
+        "Dashboard",
+        "Submissions",
+        "Clients",
+        "Team",
+        "Audit log"
+      ],
+      "must_do": [
+        "Search/filter submissions",
+        "Open generated PDFs",
+        "Track missing/late forms",
+        "Review client/team records",
+        "Complete supervisory visit forms"
+      ]
+    },
+    {
+      "role": "Caregiver",
+      "purpose": "Completes published forms for assigned clients with autofill help, review, signature, and submission.",
+      "nav": [
+        "My day",
+        "Available forms",
+        "My submissions",
+        "My clients"
+      ],
+      "must_do": [
+        "Choose a client",
+        "Choose a form",
+        "Fill required fields",
+        "Accept/reject autofill suggestions",
+        "Sign",
+        "Preview PDF",
+        "Submit"
+      ]
+    }
+  ],
+  "targetFileStructure": "dare-to-care-forms/\n\u251c\u2500 package.json\n\u251c\u2500 README.md\n\u251c\u2500 .env.example\n\u251c\u2500 public/\n\u2502  \u251c\u2500 logo.png\n\u2502  \u2514\u2500 reference-forms/                         # original PDFs kept for admin import/reference\n\u251c\u2500 src/\n\u2502  \u251c\u2500 app/\n\u2502  \u2502  \u251c\u2500 App.tsx                               # provider + routes\n\u2502  \u2502  \u251c\u2500 routes.tsx                            # route map by role\n\u2502  \u2502  \u251c\u2500 AppShell.tsx                          # sidebar/topbar/layout\n\u2502  \u2502  \u2514\u2500 permissions.ts                        # role capabilities\n\u2502  \u251c\u2500 assets/\n\u2502  \u251c\u2500 components/\n\u2502  \u2502  \u251c\u2500 ui/                                   # buttons, cards, inputs, modal, table, badges\n\u2502  \u2502  \u251c\u2500 layout/                               # sidebar, topbar, mobile frame\n\u2502  \u2502  \u2514\u2500 forms/                                # reusable field renderer, signature pad, PDF preview blocks\n\u2502  \u251c\u2500 features/\n\u2502  \u2502  \u251c\u2500 auth/                                 # login/session/role switching\n\u2502  \u2502  \u251c\u2500 admin/                                # dashboard, users, clients, audit\n\u2502  \u2502  \u251c\u2500 templates/                            # template list, upload/import, builder/editor\n\u2502  \u2502  \u251c\u2500 caregiver/                            # today, available forms, wizard, submissions\n\u2502  \u2502  \u251c\u2500 office-manager/                       # dashboard, records, team, supervisory workflows\n\u2502  \u2502  \u2514\u2500 clients/                              # shared client profile screens and modals\n\u2502  \u251c\u2500 data/\n\u2502  \u2502  \u251c\u2500 formSchemas/                          # JSON schemas for digitized forms\n\u2502  \u2502  \u251c\u2500 referenceForms.ts                     # inventory of source PDFs\n\u2502  \u2502  \u2514\u2500 seed.ts                               # dev-only test data; production starts empty\n\u2502  \u251c\u2500 services/\n\u2502  \u2502  \u251c\u2500 formExtraction.service.ts             # PDF \u2192 fields/schema\n\u2502  \u2502  \u251c\u2500 pdf.service.ts                        # fill/render/export branded PDFs\n\u2502  \u2502  \u251c\u2500 audit.service.ts\n\u2502  \u2502  \u251c\u2500 storage.service.ts\n\u2502  \u2502  \u2514\u2500 validation.service.ts\n\u2502  \u251c\u2500 store/                                   # app state or API cache layer\n\u2502  \u251c\u2500 types/                                   # User, Client, Template, Field, Submission, AuditEvent\n\u2502  \u251c\u2500 utils/\n\u2502  \u2514\u2500 styles/\n\u251c\u2500 tests/\n\u2502  \u251c\u2500 form-validation.test.ts\n\u2502  \u251c\u2500 pdf-output.test.ts\n\u2502  \u2514\u2500 permissions.test.ts\n\u2514\u2500 docs/\n   \u251c\u2500 App_Design_Document_ADD.docx\n   \u251c\u2500 forms_inventory.md\n   \u2514\u2500 data_model.md",
+  "sourceFileMap": [
+    {
+      "file": "index.html",
+      "purpose": "Loads React/Babel scripts, app styles, and source JSX in browser."
+    },
+    {
+      "file": "app.jsx",
+      "purpose": "Global app state, role-based shell, sidebar, topbar, router, toasts, theme/density/accent tweaks."
+    },
+    {
+      "file": "data.js",
+      "purpose": "Empty seed state plus mock AI-extractable form schemas for Fall Risk Assessment and Medication List."
+    },
+    {
+      "file": "login.jsx",
+      "purpose": "Role sign-in screen for Admin, Office Manager, and Caregiver."
+    },
+    {
+      "file": "admin.jsx",
+      "purpose": "Admin dashboard, templates list, upload PDF flow, users view, clients view, audit log."
+    },
+    {
+      "file": "builder.jsx",
+      "purpose": "AI extraction review, form builder, field inspector, PDF preview overlays, publish/save actions."
+    },
+    {
+      "file": "caregiver.jsx",
+      "purpose": "Caregiver today/forms/submissions/clients, guided form wizard, autofill suggestions, signature pad, PDF preview."
+    },
+    {
+      "file": "om.jsx",
+      "purpose": "Office Manager dashboard and initial records view. Currently uses older/static APP_DATA paths in some places."
+    },
+    {
+      "file": "tweaks-panel.jsx",
+      "purpose": "Prototype theme control panel and localStorage tweak persistence."
+    },
+    {
+      "file": "icons.jsx",
+      "purpose": "Inline SVG icon library."
+    },
+    {
+      "file": "styles*.css",
+      "purpose": "Global app, login, builder, and wizard styling."
+    },
+    {
+      "file": "uploads/",
+      "purpose": "Dare to Care logo and reference PDF forms."
+    }
+  ],
+  "workflows": [
+    {
+      "name": "Admin: PDF to published template",
+      "steps": [
+        "Admin opens Upload PDF.",
+        "Admin uploads or selects a reference PDF.",
+        "System extracts title, sections, field labels, field types, required fields, scoring rules, tables, signatures, and PDF layout hints.",
+        "Admin reviews AI interpretation: purpose, audience, record type, cadence, output, autofill fields.",
+        "Admin edits field labels/types/options/required flags/scoring/table columns.",
+        "Admin saves draft or publishes template.",
+        "Published template becomes available to caregiver and visible to office manager records flows.",
+        "Audit event is recorded."
+      ]
+    },
+    {
+      "name": "Caregiver: Fill and submit form",
+      "steps": [
+        "Caregiver chooses a form from My day or Available forms.",
+        "Caregiver selects a client.",
+        "Wizard walks through each section.",
+        "Safe autofill can be accepted individually or in bulk; unsafe autofill such as signature requires explicit action.",
+        "Required fields block progress until complete.",
+        "Computed fields update automatically, such as fall-risk score and tier.",
+        "Caregiver reviews answers, previews the branded PDF, signs where required, and submits.",
+        "Submission record stores template version, client, values, signer, timestamps, PDF reference, and audit event."
+      ]
+    },
+    {
+      "name": "Office Manager: Records review",
+      "steps": [
+        "Office Manager opens Submissions.",
+        "Records can be searched/filtered by client, caregiver, form type, status, and date range.",
+        "Manager opens submission detail/PDF, checks completion, requests correction if needed, exports/downloads if authorized.",
+        "Manager can monitor required recurring forms such as care plan review, supervisory visit, activity report, and fall-risk reassessment."
+      ]
+    }
+  ],
+  "referenceForms": [
+    {
+      "file": "Caregiver/New Hire Paperwork.pdf",
+      "name": "New Hire Paperwork",
+      "owner": "Caregiver",
+      "type": "Onboarding packet",
+      "priority": "High",
+      "pages": 22,
+      "note": "Digitize as multiple sub-forms or a guided onboarding packet."
+    },
+    {
+      "file": "Caregiver/Workplace_Violence_Policy_Acknowledgement.pdf",
+      "name": "Workplace Violence Policy Acknowledgement",
+      "owner": "Caregiver",
+      "type": "Policy acknowledgement",
+      "priority": "High",
+      "pages": 1,
+      "note": "Simple acknowledgement/signature form; good MVP candidate."
+    },
+    {
+      "file": "Client/Client Admission Packet.pdf",
+      "name": "Client Admission Packet",
+      "owner": "Client",
+      "type": "Client intake packet",
+      "priority": "High",
+      "pages": 25,
+      "note": "Large packet; split into smaller intake modules for cleaner UX."
+    },
+    {
+      "file": "Client/Client_Care_Plan.pdf",
+      "name": "Client Care Plan",
+      "owner": "Client",
+      "type": "Care plan",
+      "priority": "High",
+      "pages": 2,
+      "note": "Core service-plan document; should connect to client profile and services."
+    },
+    {
+      "file": "Client/Fall_Risk_Assessment.pdf",
+      "name": "Fall Risk Assessment",
+      "owner": "Client/Caregiver",
+      "type": "Clinical assessment",
+      "priority": "High",
+      "pages": 1,
+      "note": "Already represented in prototype schema and PDF preview."
+    },
+    {
+      "file": "Client/Medication_List.pdf",
+      "name": "Medication List",
+      "owner": "Client/Caregiver",
+      "type": "Clinical record",
+      "priority": "High",
+      "pages": 1,
+      "note": "Already represented in prototype schema and PDF preview."
+    },
+    {
+      "file": "Employee/Client_Care_Plan_Review.pdf",
+      "name": "Client Care Plan Review",
+      "owner": "Employee/Caregiver",
+      "type": "Acknowledgement",
+      "priority": "Medium",
+      "pages": 1,
+      "note": "Simple training/policy acknowledgement."
+    },
+    {
+      "file": "Employee/Emergency_Preparedness_Plan_(EPP).pdf",
+      "name": "Emergency Preparedness Plan (EPP)",
+      "owner": "Employee/Caregiver",
+      "type": "Education acknowledgement",
+      "priority": "Medium",
+      "pages": 1,
+      "note": "Policy/education review with staff signature."
+    },
+    {
+      "file": "Office Manager/CaregiverActivityReport.pdf",
+      "name": "CaregiverActivityReport",
+      "owner": "Office Manager/Caregiver",
+      "type": "Visit/activity log",
+      "priority": "High",
+      "pages": 1,
+      "note": "Timesheet/service log; can become recurring shift note."
+    },
+    {
+      "file": "Office Manager/DareTC SOP Manual.pdf",
+      "name": "DareTC SOP Manual",
+      "owner": "Office Manager/Admin",
+      "type": "Operations SOP",
+      "priority": "Medium",
+      "pages": 7,
+      "note": "Reference manual, not primarily a fillable form."
+    },
+    {
+      "file": "Office Manager/Supervisory_Visit_Form.pdf",
+      "name": "Supervisory Visit Form",
+      "owner": "Office Manager",
+      "type": "Supervisory visit",
+      "priority": "High",
+      "pages": 1,
+      "note": "Core supervisory documentation and compliance review."
+    }
+  ],
+  "implementedSchemas": {
+    "fallRisk": {
+      "key": "fallRisk",
+      "sourceFilename": "Fall_Risk_Assessment.pdf",
+      "name": "Fall Risk Assessment",
+      "category": "Clinical",
+      "description": "Morse-style scale used at intake and quarterly review.",
+      "interpretation": {
+        "purpose": "Score a client's likelihood of falling using a Morse-style scale, prompt interventions, and produce a signed record for the chart.",
+        "audience": [
+          "Caregiver",
+          "Office Manager"
+        ],
+        "recordType": "Clinical assessment",
+        "cadence": "On intake, quarterly, and after any incident",
+        "output": "Fall Risk Assessment PDF \u2014 Dare to Care branded, 1 page",
+        "autofill": [
+          "Client name",
+          "DOB",
+          "MRN",
+          "Today's date"
+        ]
+      },
+      "sections": [
+        {
+          "id": "s1",
+          "title": "Client identification",
+          "fields": [
+            {
+              "id": "f1",
+              "label": "Client full name",
+              "type": "text",
+              "required": true,
+              "semantic": "client.fullName",
+              "autofill": {
+                "source": "client profile",
+                "from": "name",
+                "confidence": 0.98,
+                "safe": true
+              },
+              "ai": {
+                "confidence": 0.98,
+                "src": "field",
+                "note": "Matched client header"
+              }
+            },
+            {
+              "id": "f2",
+              "label": "Date of birth",
+              "type": "date",
+              "required": true,
+              "semantic": "client.dateOfBirth",
+              "autofill": {
+                "source": "client profile",
+                "from": "dob",
+                "confidence": 0.97,
+                "safe": true
+              },
+              "ai": {
+                "confidence": 0.97,
+                "src": "field"
+              }
+            },
+            {
+              "id": "f3",
+              "label": "Medical record number",
+              "type": "text",
+              "required": false,
+              "semantic": "client.mrn",
+              "autofill": {
+                "source": "client profile",
+                "from": "mrn",
+                "confidence": 0.91,
+                "safe": true
+              },
+              "ai": {
+                "confidence": 0.91,
+                "src": "field"
+              }
+            },
+            {
+              "id": "f4",
+              "label": "Assessment date",
+              "type": "date",
+              "required": true,
+              "semantic": "form.completionDate",
+              "autofill": {
+                "source": "today's date",
+                "from": "today",
+                "confidence": 0.95,
+                "safe": true
+              },
+              "ai": {
+                "confidence": 0.95,
+                "src": "field"
+              }
+            }
+          ]
+        },
+        {
+          "id": "s2",
+          "title": "History",
+          "fields": [
+            {
+              "id": "f5",
+              "label": "History of falling (within 3 months)",
+              "type": "radio",
+              "required": true,
+              "semantic": "assessment.historyOfFalling",
+              "options": [
+                {
+                  "label": "No",
+                  "score": 0
+                },
+                {
+                  "label": "Yes",
+                  "score": 25
+                }
+              ],
+              "ai": {
+                "confidence": 0.93,
+                "src": "checkbox-pair",
+                "note": "Scored item \u2014 extracted point values"
+              }
+            },
+            {
+              "id": "f6",
+              "label": "Secondary diagnosis",
+              "type": "radio",
+              "required": true,
+              "semantic": "assessment.secondaryDiagnosis",
+              "options": [
+                {
+                  "label": "No",
+                  "score": 0
+                },
+                {
+                  "label": "Yes",
+                  "score": 15
+                }
+              ],
+              "ai": {
+                "confidence": 0.88,
+                "src": "checkbox-pair"
+              }
+            }
+          ]
+        },
+        {
+          "id": "s3",
+          "title": "Ambulatory aid & gait",
+          "fields": [
+            {
+              "id": "f7",
+              "label": "Ambulatory aid",
+              "type": "radio",
+              "required": true,
+              "semantic": "assessment.ambulatoryAid",
+              "options": [
+                {
+                  "label": "None / bed rest / wheelchair / nurse",
+                  "score": 0
+                },
+                {
+                  "label": "Crutches / cane / walker",
+                  "score": 15
+                },
+                {
+                  "label": "Furniture",
+                  "score": 30
+                }
+              ],
+              "ai": {
+                "confidence": 0.86,
+                "src": "checkbox-list"
+              }
+            },
+            {
+              "id": "f8",
+              "label": "IV / heparin lock",
+              "type": "radio",
+              "required": true,
+              "semantic": "assessment.ivLock",
+              "options": [
+                {
+                  "label": "No",
+                  "score": 0
+                },
+                {
+                  "label": "Yes",
+                  "score": 20
+                }
+              ],
+              "ai": {
+                "confidence": 0.94,
+                "src": "checkbox-pair"
+              }
+            },
+            {
+              "id": "f9",
+              "label": "Gait / transferring",
+              "type": "radio",
+              "required": true,
+              "semantic": "assessment.gait",
+              "options": [
+                {
+                  "label": "Normal / bedrest / immobile",
+                  "score": 0
+                },
+                {
+                  "label": "Weak",
+                  "score": 10
+                },
+                {
+                  "label": "Impaired",
+                  "score": 20
+                }
+              ],
+              "ai": {
+                "confidence": 0.82,
+                "src": "checkbox-list"
+              }
+            },
+            {
+              "id": "f10",
+              "label": "Mental status",
+              "type": "radio",
+              "required": true,
+              "semantic": "assessment.mentalStatus",
+              "options": [
+                {
+                  "label": "Oriented to own ability",
+                  "score": 0
+                },
+                {
+                  "label": "Forgets limitations",
+                  "score": 15
+                }
+              ],
+              "ai": {
+                "confidence": 0.9,
+                "src": "checkbox-pair"
+              }
+            }
+          ]
+        },
+        {
+          "id": "s4",
+          "title": "Plan & sign-off",
+          "fields": [
+            {
+              "id": "f11",
+              "label": "Total score",
+              "type": "computed",
+              "formula": "sum",
+              "required": true,
+              "semantic": "assessment.totalScore",
+              "ai": {
+                "confidence": 0.78,
+                "src": "computed",
+                "note": "Detected as a numeric total field"
+              }
+            },
+            {
+              "id": "f12",
+              "label": "Risk level",
+              "type": "computed",
+              "formula": "tier",
+              "required": true,
+              "semantic": "assessment.riskTier",
+              "ai": {
+                "confidence": 0.74,
+                "src": "computed"
+              }
+            },
+            {
+              "id": "f13",
+              "label": "Interventions / notes",
+              "type": "textarea",
+              "required": false,
+              "semantic": "assessment.interventionNotes",
+              "ai": {
+                "confidence": 0.88,
+                "src": "freetext-area",
+                "note": "Detected multi-line text area"
+              }
+            },
+            {
+              "id": "f14",
+              "label": "Assessor signature",
+              "type": "signature",
+              "required": true,
+              "semantic": "form.assessorSignature",
+              "autofill": {
+                "source": "logged-in caregiver",
+                "from": "currentUser",
+                "confidence": 0.96,
+                "safe": false
+              },
+              "ai": {
+                "confidence": 0.96,
+                "src": "signature-line"
+              }
+            },
+            {
+              "id": "f15",
+              "label": "Signature date",
+              "type": "date",
+              "required": true,
+              "semantic": "form.signatureDate",
+              "autofill": {
+                "source": "today's date",
+                "from": "today",
+                "confidence": 0.99,
+                "safe": true
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "medicationList": {
+      "key": "medicationList",
+      "sourceFilename": "Medication_List.pdf",
+      "name": "Medication List",
+      "category": "Clinical",
+      "description": "Current medications maintained by the caregiver. Preserves the tabular schedule from the original form.",
+      "interpretation": {
+        "purpose": "Maintain the current medication regimen for a client and reconcile against bottle counts at each shift change.",
+        "audience": [
+          "Caregiver",
+          "Office Manager"
+        ],
+        "recordType": "Clinical record",
+        "cadence": "On admission and at each medication change",
+        "output": "Medication List PDF \u2014 Dare to Care branded, 1 page with tabular schedule",
+        "autofill": [
+          "Client name",
+          "DOB",
+          "Primary physician",
+          "Today's date"
+        ]
+      },
+      "sections": [
+        {
+          "id": "ms1",
+          "title": "Client identification",
+          "fields": [
+            {
+              "id": "mf1",
+              "label": "Client full name",
+              "type": "text",
+              "required": true,
+              "semantic": "client.fullName",
+              "autofill": {
+                "source": "client profile",
+                "from": "name",
+                "confidence": 0.98,
+                "safe": true
+              }
+            },
+            {
+              "id": "mf2",
+              "label": "Date of birth",
+              "type": "date",
+              "required": true,
+              "semantic": "client.dateOfBirth",
+              "autofill": {
+                "source": "client profile",
+                "from": "dob",
+                "confidence": 0.97,
+                "safe": true
+              }
+            },
+            {
+              "id": "mf3",
+              "label": "Primary physician",
+              "type": "text",
+              "required": true,
+              "semantic": "client.primaryPhysician",
+              "autofill": {
+                "source": "client profile",
+                "from": "physician",
+                "confidence": 0.84,
+                "safe": true
+              }
+            },
+            {
+              "id": "mf4",
+              "label": "Review date",
+              "type": "date",
+              "required": true,
+              "semantic": "form.completionDate",
+              "autofill": {
+                "source": "today's date",
+                "from": "today",
+                "confidence": 0.99,
+                "safe": true
+              }
+            }
+          ]
+        },
+        {
+          "id": "ms2",
+          "title": "Active medications",
+          "fields": [
+            {
+              "id": "mf5",
+              "label": "Medication schedule",
+              "type": "table",
+              "required": true,
+              "semantic": "medication.schedule",
+              "ai": {
+                "confidence": 0.89,
+                "src": "table",
+                "note": "Detected 7 columns \u00d7 repeating rows. Preserved as a structured table \u2014 not flattened into text."
+              },
+              "columns": [
+                {
+                  "id": "name",
+                  "label": "Medication",
+                  "type": "text",
+                  "width": 1.4
+                },
+                {
+                  "id": "dose",
+                  "label": "Dose",
+                  "type": "text",
+                  "width": 0.7
+                },
+                {
+                  "id": "route",
+                  "label": "Route",
+                  "type": "select",
+                  "width": 0.7,
+                  "options": [
+                    "PO",
+                    "IM",
+                    "SC",
+                    "Topical",
+                    "Inhaled"
+                  ]
+                },
+                {
+                  "id": "freq",
+                  "label": "Frequency",
+                  "type": "select",
+                  "width": 0.9,
+                  "options": [
+                    "Once daily",
+                    "Twice daily",
+                    "Three times daily",
+                    "At bedtime",
+                    "PRN"
+                  ]
+                },
+                {
+                  "id": "time",
+                  "label": "Time(s)",
+                  "type": "text",
+                  "width": 0.9
+                },
+                {
+                  "id": "rx",
+                  "label": "Prescriber",
+                  "type": "text",
+                  "width": 1
+                },
+                {
+                  "id": "notes",
+                  "label": "Notes",
+                  "type": "text",
+                  "width": 1.4
+                }
+              ],
+              "rows": []
+            }
+          ]
+        },
+        {
+          "id": "ms3",
+          "title": "Allergies & verification",
+          "fields": [
+            {
+              "id": "mf6",
+              "label": "Known allergies",
+              "type": "textarea",
+              "required": false,
+              "semantic": "client.allergies"
+            },
+            {
+              "id": "mf7",
+              "label": "Reconciled with bottle counts",
+              "type": "radio",
+              "required": true,
+              "semantic": "medication.reconciled",
+              "options": [
+                {
+                  "label": "Yes \u2014 all counts match",
+                  "score": 0
+                },
+                {
+                  "label": "Discrepancy noted (see notes)",
+                  "score": 0
+                }
+              ]
+            },
+            {
+              "id": "mf8",
+              "label": "Caregiver signature",
+              "type": "signature",
+              "required": true,
+              "semantic": "form.assessorSignature",
+              "autofill": {
+                "source": "logged-in caregiver",
+                "from": "currentUser",
+                "confidence": 0.96,
+                "safe": false
+              }
+            },
+            {
+              "id": "mf9",
+              "label": "Signature date",
+              "type": "date",
+              "required": true,
+              "semantic": "form.signatureDate",
+              "autofill": {
+                "source": "today's date",
+                "from": "today",
+                "confidence": 0.99,
+                "safe": true
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "requiredDataModels": {
+    "User": [
+      "id",
+      "name",
+      "email",
+      "role",
+      "status",
+      "permissions",
+      "createdAt",
+      "lastLoginAt"
+    ],
+    "Client": [
+      "id",
+      "name",
+      "dob",
+      "mrn",
+      "phone",
+      "address",
+      "primaryPhysician",
+      "emergencyContacts",
+      "allergies",
+      "carePlanSummary",
+      "assignedCaregivers",
+      "status",
+      "createdAt",
+      "updatedAt"
+    ],
+    "FormTemplate": [
+      "id",
+      "key",
+      "name",
+      "category",
+      "description",
+      "sourcePdfId",
+      "version",
+      "status",
+      "sections",
+      "interpretation",
+      "createdBy",
+      "publishedAt",
+      "updatedAt"
+    ],
+    "FormField": [
+      "id",
+      "sectionId",
+      "label",
+      "type",
+      "required",
+      "semantic",
+      "options",
+      "columns",
+      "formula",
+      "autofill",
+      "validation",
+      "layoutHints"
+    ],
+    "Submission": [
+      "id",
+      "templateId",
+      "templateVersion",
+      "clientId",
+      "caregiverId",
+      "values",
+      "computedValues",
+      "signatures",
+      "status",
+      "pdfUrl",
+      "submittedAt",
+      "reviewedAt"
+    ],
+    "AuditEvent": [
+      "id",
+      "timestamp",
+      "actorId",
+      "actorRole",
+      "action",
+      "targetType",
+      "targetId",
+      "ip",
+      "metadata"
+    ]
+  },
+  "buildPriorities": [
+    "Convert prototype into clean component/file structure.",
+    "Keep ADD naming; do not call the document a GDD.",
+    "Use real form schema JSON instead of hardcoded UI-only fields.",
+    "Make Admin upload/import and builder clean enough for nontechnical staff.",
+    "Make caregiver wizard mobile-first and simple.",
+    "Connect submissions to Office Manager records; avoid static demo arrays.",
+    "Generate/stamp a branded PDF for each completed submission.",
+    "Keep audit trail and role permissions from the start."
+  ]
+}

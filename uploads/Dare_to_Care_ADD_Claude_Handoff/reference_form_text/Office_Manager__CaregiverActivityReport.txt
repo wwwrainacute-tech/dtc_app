@@ -1,0 +1,46 @@
+                           Home Health
+                        Care Activity Report
+  CAREGIVER                                              CLIENT
+    NAME :                                               NAME :
+  DATE        DAY             TIME IN    TIME OUT         TOTAL HOURS       COMMENTS
+
+
+
+
+           SERVICES              M T W T F S S             PERSONAL        M T W T F S   S
+              Bath                                        SKIN CARE
+☐ Tub/Shower                                     ☐ Moisturize Skin
+☐ Bed/Partial/Complete                                     Activity
+☐ Assist with Chair Bath                         ☐ Ambulation/Mobility
+☐ Dry Off                                        ☐ Chair/Bed Mobility
+☐ Shampoo Hair                                   ☐ Empty Commode
+☐ Comb/Hair Care                                 ☐ Reposition Patient
+☐ Oral Care                                      ☐ Range of Motion
+      Assist with Dressing                       ☐ Assist with Transfer
+☐ Shave  Electric/Straight                       ☐ Equipment Care
+☐ Hand/Foot Care                                 ☐ Dangle on Side of Bed
+☐ Soak Feet                                                 Activity
+             Clean                               ☐ Change Bed Linen
+☐ File Nails                                     ☐ Make Bed
+          Elimination                            ☐ Straighten Room
+☐ Perineal  Care                                 ☐ Laundry
+☐ Assist with Bedpan/Urinal                      ☐ Shopping
+☐ Catheter Care                                  ☐ Vacuum/Dust/Mop
+☐ Empty Drainage Bag                             ☐ Kitchen
+☐ Medication Reminder                            ☐ Wash Dishes
+☐ Incontinence Care                              ☐ Trash
+            MEAL                                 ☐ Bedroom
+☐ Setup                                          ☐ Clean Bathroom
+☐ Offer Oral Supplement                          ☐ Supervision
+                                         DAILY SIGNATURES
+                    CLIENT                            CAREGIVER                  SHIFT
+    SUN
+   MON
+    TUE
+    WED
+    THU
+    FRI
+    SAT
+
+                                             NOTES
+
