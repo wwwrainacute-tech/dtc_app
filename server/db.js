@@ -225,11 +225,14 @@ async function initDB() {
       role TEXT NOT NULL, status TEXT NOT NULL,
       password_hash TEXT NOT NULL,
       must_change_password INTEGER NOT NULL DEFAULT 1,
+      temp_password_plain TEXT,
       temp_password_expires_at TEXT,
       created_by_admin_id TEXT,
       created_at TEXT NOT NULL, last_login_at TEXT
     )
   `);
+  // Migrate: add temp_password_plain if it doesn't exist
+  await addColumnIfNotExists("users", "temp_password_plain", "TEXT");
 
   await run(`
     CREATE TABLE IF NOT EXISTS sessions (
@@ -362,18 +365,19 @@ async function listUsers() {
   return rows.map(mapUser);
 }
 
-async function createUser({ name, username, role, status = "active", password, mustChangePassword = 1, tempPasswordExpiresAt = null, createdByAdminId = null }) {
+async function createUser({ name, username, role, status = "active", password, mustChangePassword = 1, tempPasswordExpiresAt = null, createdByAdminId = null, storeTempPassword = false }) {
   const id = `u_${crypto.randomUUID().slice(0, 8)}`;
   const createdAt = nowIso();
+  const tempPasswordPlain = (mustChangePassword && storeTempPassword) ? password : null;
   await run(
-    `INSERT INTO users (id, username, name, initials, role, status, password_hash, must_change_password, temp_password_expires_at, created_by_admin_id, created_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, username, name, buildInitials(name), role, status, hashPassword(password), mustChangePassword, tempPasswordExpiresAt, createdByAdminId, createdAt, null],
+    `INSERT INTO users (id, username, name, initials, role, status, password_hash, must_change_password, temp_password_plain, temp_password_expires_at, created_by_admin_id, created_at, last_login_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, username, name, buildInitials(name), role, status, hashPassword(password), mustChangePassword, tempPasswordPlain, tempPasswordExpiresAt, createdByAdminId, createdAt, null],
   );
   return getUserById(id);
 }
 
-async function updateUser(id, { name, role, status, passwordHash, mustChangePassword, tempPasswordExpiresAt }) {
+async function updateUser(id, { name, role, status, passwordHash, mustChangePassword, tempPasswordExpiresAt, clearTempPassword }) {
   const updatedFields = [];
   const params = [];
   if (name !== undefined) { updatedFields.push("name = ?", "initials = ?"); params.push(name, buildInitials(name)); }
@@ -382,6 +386,7 @@ async function updateUser(id, { name, role, status, passwordHash, mustChangePass
   if (passwordHash !== undefined) { updatedFields.push("password_hash = ?"); params.push(passwordHash); }
   if (mustChangePassword !== undefined) { updatedFields.push("must_change_password = ?"); params.push(mustChangePassword ? 1 : 0); }
   if (tempPasswordExpiresAt !== undefined) { updatedFields.push("temp_password_expires_at = ?"); params.push(tempPasswordExpiresAt); }
+  if (clearTempPassword) { updatedFields.push("temp_password_plain = ?"); params.push(null); }
   if (updatedFields.length === 0) return getUserById(id);
   params.push(id);
   await run(`UPDATE users SET ${updatedFields.join(", ")} WHERE id = ?`, params);

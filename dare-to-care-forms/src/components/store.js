@@ -261,17 +261,24 @@ export const DTCStore = {
 
   // Users
   getUsers() { return state.users.slice(); },
+  getToken() { return getStoredToken(); },
 
   async createUser(userInput) {
-    const created = await apiFetch("/api/users", { method: "POST", body: JSON.stringify(userInput) });
+    const created = await apiFetch("/api/admin/users", { method: "POST", body: JSON.stringify(userInput) });
     await refresh();
     return created;
   },
 
   async updateUser(id, patch) {
-    const updated = await apiFetch(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    const updated = await apiFetch(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
     await refresh();
     return updated;
+  },
+
+  async resetUserPassword(id, newPassword) {
+    const result = await apiFetch(`/api/admin/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ newPassword }) });
+    await refresh();
+    return result;
   },
 
   // Clients

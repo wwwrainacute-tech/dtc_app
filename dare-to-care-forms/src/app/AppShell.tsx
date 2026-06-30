@@ -32,13 +32,31 @@ const navByRole: Record<Role, NavItem[]> = {
     { to: "/office-manager/team", label: "Team", icon: "users" },
     { to: "/office-manager/audit", label: "Audit log", icon: "clock" },
   ],
+  newHire: [
+    { to: "/new-hire", label: "Onboarding", icon: "home" },
+    { to: "/new-hire/training", label: "Training", icon: "layers" },
+    { to: "/new-hire/paperwork", label: "Paperwork", icon: "file" },
+  ],
+  client: [
+    { to: "/client", label: "My Forms", icon: "file" },
+    { to: "/client/documents", label: "Documents", icon: "inbox" },
+  ],
 };
 
 const roleLabels: Record<Role, string> = {
-  admin: "Admin",
+  admin: "Administrator",
   caregiver: "Caregiver",
   officeManager: "Office Manager",
+  newHire: "New Hire",
+  client: "Client",
 };
+
+const previewableRoles: { role: Role; label: string; color: string }[] = [
+  { role: "caregiver", label: "Caregiver", color: "#2f8a68" },
+  { role: "officeManager", label: "Office Mgr", color: "#4c8cf3" },
+  { role: "newHire", label: "New Hire", color: "#d7923b" },
+  { role: "client", label: "Client", color: "#8b5cf6" },
+];
 
 function NavIcon({ name }: { name: string }) {
   const svgProps = {
@@ -52,75 +70,19 @@ function NavIcon({ name }: { name: string }) {
     strokeLinejoin: "round" as const,
   };
   const icons: Record<string, React.ReactNode> = {
-    grid: (
-      <>
-        <rect x="3" y="3" width="7" height="7" />
-        <rect x="14" y="3" width="7" height="7" />
-        <rect x="14" y="14" width="7" height="7" />
-        <rect x="3" y="14" width="7" height="7" />
-      </>
-    ),
-    layers: (
-      <>
-        <path d="M12 2L2 7l10 5 10-5z" />
-        <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
-      </>
-    ),
-    upload: (
-      <>
-        <path d="M12 3v12" />
-        <path d="M8 7l4-4 4 4" />
-        <path d="M4 21h16" />
-      </>
-    ),
-    users: (
-      <>
-        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-      </>
-    ),
-    clients: (
-      <>
-        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M23 21v-2a4 4 0 00-3-3.87" />
-        <path d="M16 3.13a4 4 0 010 7.75" />
-      </>
-    ),
-    clock: (
-      <>
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 6v6l4 2" />
-      </>
-    ),
-    home: (
-      <>
-        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-        <path d="M9 22V12h6v10" />
-      </>
-    ),
-    file: (
-      <>
-        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-        <path d="M14 2v6h6" />
-      </>
-    ),
-    inbox: (
-      <>
-        <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-        <path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" />
-      </>
-    ),
-    logout: (
-      <>
-        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-        <path d="M16 17l5-5-5-5" />
-        <path d="M21 12H9" />
-      </>
-    ),
+    grid: <><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></>,
+    layers: <><path d="M12 2L2 7l10 5 10-5z" /><path d="M2 17l10 5 10-5M2 12l10 5 10-5" /></>,
+    upload: <><path d="M12 3v12" /><path d="M8 7l4-4 4 4" /><path d="M4 21h16" /></>,
+    users: <><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /></>,
+    clients: <><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></>,
+    clock: <><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></>,
+    home: <><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><path d="M9 22V12h6v10" /></>,
+    file: <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /></>,
+    inbox: <><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z" /></>,
+    logout: <><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><path d="M16 17l5-5-5-5" /><path d="M21 12H9" /></>,
     chevDown: <path d="M6 9l6 6 6-6" />,
+    eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
   };
-
   return <svg {...svgProps}>{icons[name] || null}</svg>;
 }
 
@@ -145,7 +107,7 @@ function useBadgeCounts(role: Role, userId: string) {
 }
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, enterPreview, exitPreview, effectiveRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -160,17 +122,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => { window.removeEventListener("offline", goOffline); window.removeEventListener("online", goOnline); };
   }, []);
 
-  const badges = useBadgeCounts(user?.role as Role, user?.id ?? "");
+  const badges = useBadgeCounts(effectiveRole as Role || "caregiver", user?.id ?? "");
 
   React.useEffect(() => {
     setSidebarOpen(false);
   }, [location.pathname]);
 
-  if (!user) {
-    return <>{children}</>;
-  }
+  if (!user) return <>{children}</>;
 
-  const items = navByRole[user.role] || [];
+  const isPreviewMode = user.role === "admin" && effectiveRole !== "admin" && effectiveRole !== null;
+  const displayRole = (effectiveRole ?? user.role) as Role;
+  const items = navByRole[displayRole] || [];
 
   return (
     <div className="shell">
@@ -195,10 +157,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <img src="/logo.png" alt="Dare to Care" />
           <div>
             <strong>Dare to Care</strong>
-            <span>Forms Platform</span>
+            <span>Home Care Platform</span>
           </div>
         </div>
-        <div className="shell-role-label">{roleLabels[user.role]}</div>
+
+        <div className="shell-role-label">
+          {isPreviewMode ? `Previewing: ${roleLabels[displayRole]}` : roleLabels[displayRole]}
+        </div>
+
         <nav className="shell-nav">
           {items.map((item) => {
             const isRootPath = item.to.split("/").length <= 2;
@@ -206,9 +172,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               ? location.pathname === item.to || location.pathname === `${item.to}/`
               : location.pathname.startsWith(item.to);
 
-            // Compute badge count for this specific nav item
             let badge = 0;
-            if (user?.role === "caregiver" && item.to.includes("/caregiver") && isRootPath) {
+            if (displayRole === "caregiver" && item.to.includes("/caregiver") && isRootPath) {
               badge = badges.corrections + badges.queued;
             } else if (item.label === "Records") {
               badge = badges.corrections;
@@ -225,12 +190,55 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+
+        {/* Admin role switcher */}
+        {user.role === "admin" && (
+          <div className="role-switcher">
+            <div className="role-switcher-label">Preview as role</div>
+            <div className="role-switcher-grid">
+              {previewableRoles.map(({ role, label }) => (
+                <button
+                  key={role}
+                  className={`role-chip ${displayRole === role ? "active" : ""}`}
+                  onClick={() => {
+                    if (displayRole === role) {
+                      exitPreview();
+                      navigate("/admin");
+                    } else {
+                      const homePaths: Record<Role, string> = {
+                        admin: "/admin",
+                        caregiver: "/caregiver",
+                        officeManager: "/office-manager",
+                        newHire: "/new-hire",
+                        client: "/client",
+                      };
+                      enterPreview(role);
+                      navigate(homePaths[role]);
+                    }
+                  }}
+                >
+                  <div className="role-chip-dot" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            {isPreviewMode && (
+              <button
+                style={{ width: "100%", marginTop: 8, padding: "7px 10px", borderRadius: 10, fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)", textAlign: "center", border: "1px solid var(--border)" }}
+                onClick={() => { exitPreview(); navigate("/admin"); }}
+              >
+                ← Back to admin
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="shell-sidebar-foot">
           <div className="shell-user" onClick={() => setUserMenuOpen((open) => !open)}>
             <span className="shell-avatar">{user.initials}</span>
             <span className="shell-user-info">
               <strong>{user.name}</strong>
-              <span>{user.username}</span>
+              <span>{isPreviewMode ? `Admin · Previewing ${roleLabels[displayRole]}` : user.username}</span>
             </span>
             <NavIcon name="chevDown" />
           </div>
@@ -250,6 +258,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="shell-main">
+        {isPreviewMode && (
+          <div className="preview-banner">
+            <NavIcon name="eye" />
+            <span>Admin preview mode — viewing as <strong>{roleLabels[displayRole]}</strong>. Changes won't affect real data.</span>
+            <button className="preview-banner-exit" onClick={() => { exitPreview(); navigate("/admin"); }}>
+              Exit preview
+            </button>
+          </div>
+        )}
         {isOffline && (
           <div className="offline-banner" role="status">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -260,8 +277,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         )}
         <div className="shell-main-inner">{children}</div>
         <footer className="shell-footer">
-          <span>Dare to Care · Forms Platform</span>
-          <span>Role-based access · Stored PDFs</span>
+          <span>Dare to Care · Home Care Platform</span>
+          <span>Role-based access · Secure PDFs</span>
         </footer>
       </main>
     </div>

@@ -630,6 +630,7 @@ app.post("/api/auth/change-password", requireAuth, async (req, res) => {
       passwordHash: hashPassword(newPassword),
       mustChangePassword: false,
       tempPasswordExpiresAt: null,
+      clearTempPassword: true,
     });
     
     await createAuditEvent({
@@ -699,9 +700,10 @@ app.post("/api/admin/users", requireAuth, requireRole("admin"), async (req, res)
     if (!name || !username || !role || !password) {
       res.status(400).json({ error: "Name, username, role, and password are required." }); return;
     }
-    const created = await createUser({ 
-      name, username, role, password, 
-      mustChangePassword: 1, 
+    const created = await createUser({
+      name, username, role, password,
+      mustChangePassword: 1,
+      storeTempPassword: true,
       tempPasswordExpiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(), // 7 days
       createdByAdminId: req.user.id
     });
@@ -776,6 +778,68 @@ app.post("/api/admin/users/:id/enable", requireAuth, requireRole("admin"), async
       metadata: { status: "active" },
     });
     res.json(sanitizeUser(updated));
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ── Admin utility: suggest username from name ──────────────────────────────
+app.get("/api/admin/suggest-username", requireAuth, requireRole("admin"), async (req, res) => {
+  try {
+    const name = String(req.query.name || "").trim();
+    if (!name) { res.status(400).json({ error: "name is required" }); return; }
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length < 2) { res.json({ suggestion: parts[0].toLowerCase().replace(/[^a-z0-9]/gi, "") }); return; }
+    const first = parts[0][0].toLowerCase();
+    const last = parts[parts.length - 1].toLowerCase().replace(/[^a-z0-9]/gi, "");
+    const base = `${first}${last}`;
+    const users = await listUsers();
+    const taken = new Set(users.map((u) => u.username.toLowerCase()));
+    if (!taken.has(base)) { res.json({ suggestion: base }); return; }
+    let n = 1;
+    while (taken.has(`${base}${n}`)) n++;
+    res.json({ suggestion: `${base}${n}` });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ── Admin utility: generate a secure temp password ─────────────────────────
+app.get("/api/admin/generate-password", requireAuth, requireRole("admin"), (_req, res) => {
+  const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$";
+  let pwd = "";
+  // Ensure at least one of each required type
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghjkmnpqrstuvwxyz";
+  const digits = "23456789";
+  const special = "!@#$";
+  pwd += upper[Math.floor(Math.random() * upper.length)];
+  pwd += lower[Math.floor(Math.random() * lower.length)];
+  pwd += digits[Math.floor(Math.random() * digits.length)];
+  pwd += special[Math.floor(Math.random() * special.length)];
+  while (pwd.length < 12) {
+    pwd += charset[Math.floor(Math.random() * charset.length)];
+  }
+  // Shuffle
+  pwd = pwd.split("").sort(() => Math.random() - 0.5).join("");
+  res.json({ password: pwd });
+});
+
+// ── Admin: reveal user temp password (audit-logged, admin-only) ────────────
+// Only works while the user hasn't changed their password yet (temp_password_plain is cleared on change)
+app.get("/api/admin/users/:id/reveal-password", requireAuth, requireRole("admin"), async (req, res) => {
+  try {
+    const { get: dbGet } = require("./db");
+    const rawRow = await dbGet("SELECT id, username, name, must_change_password, temp_password_plain FROM users WHERE id = ?", [req.params.id]);
+    if (!rawRow) { res.status(404).json({ error: "User not found." }); return; }
+    await createAuditEvent({
+      actorId: req.user.id, actorName: req.user.name, role: req.user.role,
+      action: "revealed_user_password", targetType: "user", targetId: req.params.id,
+      targetLabel: rawRow.name || req.params.id, metadata: { ip: getRequestIp(req) },
+    });
+    res.json({
+      tempPassword: rawRow.temp_password_plain || null,
+      mustChangePassword: rawRow.must_change_password === 1,
+      note: rawRow.temp_password_plain
+        ? "This is the temporary password. It will be hidden once the user sets their own password."
+        : "The user has already changed their password. Only they know it.",
+    });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
