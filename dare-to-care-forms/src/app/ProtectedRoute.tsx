@@ -7,6 +7,14 @@ interface ProtectedRouteProps {
   allowedRoles?: Role[];
 }
 
+const homePaths: Record<Role, string> = {
+  admin: '/admin',
+  caregiver: '/caregiver',
+  officeManager: '/office-manager',
+  newHire: '/new-hire',
+  client: '/client',
+};
+
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
   const { user, isAuthenticated, isLoading } = useAuth();
 
@@ -32,13 +40,8 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
     return <Navigate to="/change-password" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    const homePaths: Record<Role, string> = {
-      admin: '/admin',
-      caregiver: '/caregiver',
-      officeManager: '/office-manager',
-    };
-    return <Navigate to={homePaths[user.role]} replace />;
+  if (allowedRoles && !allowedRoles.includes(user.role as Role)) {
+    return <Navigate to={homePaths[user.role as Role] || '/login'} replace />;
   }
 
   return <>{children}</>;

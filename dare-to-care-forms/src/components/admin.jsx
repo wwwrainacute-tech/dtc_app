@@ -594,25 +594,81 @@ function Builder({ templateKey, onClose, onToast }) {
 
 // ── Users ─────────────────────────────────────────────────────────────────
 
+const ROLE_LABELS = {
+  admin: "Administrator",
+  caregiver: "Caregiver",
+  officeManager: "Office Manager",
+  newHire: "New Hire",
+  client: "Client",
+};
+
+const ROLE_COLORS = {
+  admin: "#143d23",
+  caregiver: "#2f8a68",
+  officeManager: "#4c8cf3",
+  newHire: "#d7923b",
+  client: "#8b5cf6",
+};
+
 function UsersPage({ onToast }) {
   const [, force] = useState(0);
-  const genPass = () => Math.random().toString(36).slice(-6) + Math.random().toString(36).slice(-6);
-  const [form, setForm] = useState({ name: "", username: "", role: "caregiver", password: genPass() });
+  const [form, setForm] = useState({ name: "", username: "", role: "caregiver", password: "" });
   const [editUser, setEditUser] = useState(null);
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [createdUser, setCreatedUser] = useState(null); // shown in success modal
+  const [revealedPassword, setRevealedPassword] = useState(null); // { user, data }
+  const [showPass, setShowPass] = useState(false);
+  const [loadingPwd, setLoadingPwd] = useState(false);
+  const [loadingSuggest, setLoadingSuggest] = useState(false);
 
   useEffect(() => Store.subscribe(() => force((v) => v + 1)), []);
 
   const users = Store.getUsers();
+  const filtered = users.filter((u) => {
+    if (roleFilter !== "all" && u.role !== roleFilter) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q);
+  });
 
-  const filtered = users.filter((u) => !search || u.name.toLowerCase().includes(search.toLowerCase()) || u.username.toLowerCase().includes(search.toLowerCase()));
+  const suggestUsername = async (name) => {
+    if (!name || name.trim().split(/\s+/).length < 2) return;
+    setLoadingSuggest(true);
+    try {
+      const r = await fetch(`/api/admin/suggest-username?name=${encodeURIComponent(name)}`, {
+        headers: { Authorization: `Bearer ${Store.getToken()}` },
+      });
+      if (r.ok) {
+        const d = await r.json();
+        setForm((f) => ({ ...f, username: d.suggestion }));
+      }
+    } catch { /* ignore */ }
+    setLoadingSuggest(false);
+  };
+
+  const generatePassword = async () => {
+    setLoadingPwd(true);
+    try {
+      const r = await fetch("/api/admin/generate-password", {
+        headers: { Authorization: `Bearer ${Store.getToken()}` },
+      });
+      if (r.ok) {
+        const d = await r.json();
+        setForm((f) => ({ ...f, password: d.password }));
+        setShowPass(true);
+      }
+    } catch { /* ignore */ }
+    setLoadingPwd(false);
+  };
 
   const doCreate = async () => {
     if (!form.name || !form.username || !form.password) { onToast("Name, username and password are required"); return; }
     try {
-      await Store.createUser(form);
-      onToast(`User created. Temp password: ${form.password}`);
-      setForm({ name: "", username: "", role: "caregiver", password: genPass() });
+      const created = await Store.createUser(form);
+      setCreatedUser({ ...created, tempPassword: form.password });
+      setForm({ name: "", username: "", role: "caregiver", password: "" });
+      setShowPass(false);
     } catch (err) { onToast(err.message || "Error creating user"); }
   };
 
@@ -625,8 +681,94 @@ function UsersPage({ onToast }) {
     } catch (err) { onToast(err.message || "Error"); }
   };
 
+  const revealPassword = async (user) => {
+    try {
+      const r = await fetch(`/api/admin/users/${user.id}/reveal-password`, {
+        headers: { Authorization: `Bearer ${Store.getToken()}` },
+      });
+      const d = await r.json();
+      setRevealedPassword({ user, data: d });
+    } catch { onToast("Could not reveal password"); }
+  };
+
+  const doResetPassword = async (userId) => {
+    const newPassword = prompt("Enter new temporary password for this user (min 10 characters):");
+    if (!newPassword) return;
+    if (newPassword.length < 10) { onToast("Password must be at least 10 characters"); return; }
+    try {
+      await Store.resetUserPassword(userId, newPassword);
+      onToast("Password reset. User will be required to change it on next login.");
+    } catch (err) { onToast(err.message || "Error resetting password"); }
+  };
+
   return (
     <div>
+      {/* Created user success modal */}
+      {createdUser && (
+        <div className="modal-overlay" onClick={() => setCreatedUser(null)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+            <div className="modal-head">
+              <h3>Account created</h3>
+              <button className="modal-close" onClick={() => setCreatedUser(null)}><Icon n="x" s={16} /></button>
+            </div>
+            <div className="modal-body">
+              <div style={{ textAlign: "center", padding: "12px 0 20px" }}>
+                <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,var(--accent),#46a783)", color: "white", display: "grid", placeItems: "center", fontSize: 18, fontWeight: 700, margin: "0 auto 14px" }}>
+                  {createdUser.initials}
+                </div>
+                <strong style={{ display: "block", fontSize: 16, marginBottom: 4 }}>{createdUser.name}</strong>
+                <span style={{ fontSize: 12, color: "var(--ink-3)" }}>@{createdUser.username} · {ROLE_LABELS[createdUser.role] || createdUser.role}</span>
+              </div>
+              <div style={{ background: "rgba(47,138,104,0.07)", border: "1px solid rgba(47,138,104,0.2)", borderRadius: 14, padding: "16px 18px", marginTop: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 750, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-3)", marginBottom: 8 }}>Temporary password — share with user</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, letterSpacing: "0.06em", color: "var(--accent-deep)", wordBreak: "break-all" }}>{createdUser.tempPassword}</div>
+                <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--ink-3)" }}>
+                  The user must change this password when they first sign in.
+                </div>
+              </div>
+            </div>
+            <div className="modal-foot">
+              <button className="dbtn dbtn-primary" onClick={() => { navigator.clipboard?.writeText(createdUser.tempPassword); onToast("Password copied!"); }}>Copy password</button>
+              <button className="dbtn dbtn-ghost" onClick={() => setCreatedUser(null)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reveal password modal */}
+      {revealedPassword && (
+        <div className="modal-overlay" onClick={() => setRevealedPassword(null)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <div className="modal-head">
+              <h3>Temp password — {revealedPassword.user.name}</h3>
+              <button className="modal-close" onClick={() => setRevealedPassword(null)}><Icon n="x" s={16} /></button>
+            </div>
+            <div className="modal-body">
+              {revealedPassword.data.tempPassword ? (
+                <div style={{ background: "rgba(47,138,104,0.07)", border: "1px solid rgba(47,138,104,0.2)", borderRadius: 14, padding: "16px 18px" }}>
+                  <div style={{ fontSize: 11, fontWeight: 750, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-3)", marginBottom: 8 }}>Current temp password</div>
+                  <div style={{ fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 700, color: "var(--accent-deep)" }}>{revealedPassword.data.tempPassword}</div>
+                  <div style={{ marginTop: 10, fontSize: 11.5, color: "var(--ink-3)" }}>{revealedPassword.data.note}</div>
+                </div>
+              ) : (
+                <div style={{ padding: "18px 0", textAlign: "center", color: "var(--ink-3)" }}>
+                  <div style={{ fontSize: 32, marginBottom: 10 }}>🔒</div>
+                  <strong style={{ display: "block", marginBottom: 6, color: "var(--ink-2)" }}>Password not visible</strong>
+                  <span style={{ fontSize: 13 }}>{revealedPassword.data.note}</span>
+                </div>
+              )}
+            </div>
+            <div className="modal-foot">
+              {revealedPassword.data.tempPassword && (
+                <button className="dbtn dbtn-primary" onClick={() => { navigator.clipboard?.writeText(revealedPassword.data.tempPassword); onToast("Copied!"); }}>Copy</button>
+              )}
+              <button className="dbtn dbtn-ghost" onClick={() => setRevealedPassword(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit user modal */}
       {editUser && (
         <div className="modal-overlay" onClick={() => setEditUser(null)}>
           <div className="modal-box" onClick={(e) => e.stopPropagation()}>
@@ -643,8 +785,10 @@ function UsersPage({ onToast }) {
                 <label className="form-label">Role</label>
                 <select className="ds-select" value={editUser.role} onChange={(e) => setEditUser({ ...editUser, role: e.target.value })}>
                   <option value="caregiver">Caregiver</option>
+                  <option value="newHire">New Hire</option>
                   <option value="officeManager">Office Manager</option>
-                  <option value="admin">Admin</option>
+                  <option value="client">Client</option>
+                  <option value="admin">Administrator</option>
                 </select>
               </div>
               <div className="form-row">
@@ -654,10 +798,14 @@ function UsersPage({ onToast }) {
                   <option value="inactive">Inactive (deactivated)</option>
                 </select>
               </div>
+              <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 12, background: "rgba(215,146,59,0.07)", border: "1px solid rgba(215,146,59,0.2)", fontSize: 12.5, color: "#8a5c1a" }}>
+                <strong>Reset password?</strong> — Use the "Reset Password" button to set a new temporary password for this user.
+              </div>
             </div>
             <div className="modal-foot">
+              <button className="dbtn dbtn-ghost" style={{ marginRight: "auto", color: "var(--danger)", fontSize: 12 }} onClick={() => { setEditUser(null); doResetPassword(editUser.id); }}>Reset password</button>
               <button className="dbtn dbtn-ghost" onClick={() => setEditUser(null)}>Cancel</button>
-              <button className="dbtn dbtn-primary" onClick={doEdit}>Save changes</button>
+              <button className="dbtn dbtn-primary" onClick={doEdit}>Save</button>
             </div>
           </div>
         </div>
@@ -666,52 +814,120 @@ function UsersPage({ onToast }) {
       <div className="ds-ph">
         <div>
           <h1>Users</h1>
-          <p>Create and manage the accounts that power each role-based workspace.</p>
+          <p>Manage accounts across all roles — caregivers, office staff, new hires, and clients.</p>
         </div>
       </div>
 
       <div className="admin-form-grid">
+        {/* Create user panel */}
         <section className="admin-panel">
-          <div className="admin-panel-head"><div><h3>Invite account</h3><p>Seed a new user with a role and starter password.</p></div></div>
+          <div className="admin-panel-head">
+            <div><h3>Create account</h3><p>New users must change their temp password on first login.</p></div>
+          </div>
           <div className="admin-form-stack">
-            <input className="insp-input" placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <input className="insp-input" placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-            <select className="ds-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              <option value="caregiver">Caregiver</option>
-              <option value="officeManager">Office Manager</option>
-              <option value="admin">Admin</option>
-            </select>
-            <input className="insp-input" type="password" placeholder="Temporary password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-            <button className="dbtn dbtn-primary" onClick={doCreate}>
+            <div>
+              <label className="form-label" style={{ display: "block", marginBottom: 6 }}>Full name</label>
+              <input
+                className="insp-input"
+                placeholder="e.g. Jane Smith"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                onBlur={(e) => suggestUsername(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ display: "block", marginBottom: 6 }}>Username {loadingSuggest && <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Suggesting…</span>}</label>
+              <input
+                className="insp-input"
+                placeholder="auto-suggested from name"
+                value={form.username}
+                onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase().replace(/\s/g, "") })}
+              />
+            </div>
+            <div>
+              <label className="form-label" style={{ display: "block", marginBottom: 6 }}>Role</label>
+              <select className="ds-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+                <option value="caregiver">Caregiver</option>
+                <option value="newHire">New Hire (onboarding)</option>
+                <option value="officeManager">Office Manager</option>
+                <option value="client">Client</option>
+                <option value="admin">Administrator</option>
+              </select>
+            </div>
+            <div>
+              <label className="form-label" style={{ display: "block", marginBottom: 6 }}>Temporary password</label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  className="insp-input"
+                  type={showPass ? "text" : "password"}
+                  placeholder="Min 10 characters"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  className="dbtn dbtn-ghost"
+                  style={{ padding: "0 10px", fontSize: 11 }}
+                  onClick={() => setShowPass((v) => !v)}
+                  title={showPass ? "Hide" : "Show"}
+                >{showPass ? "Hide" : "Show"}</button>
+              </div>
+              <button
+                className="dbtn dbtn-ghost"
+                style={{ marginTop: 8, fontSize: 11.5, width: "100%" }}
+                onClick={generatePassword}
+                disabled={loadingPwd}
+              >
+                {loadingPwd ? "Generating…" : "⚡ Generate secure password"}
+              </button>
+            </div>
+            <button className="dbtn dbtn-primary" onClick={doCreate} disabled={!form.name || !form.username || !form.password}>
               <Icon n="plus" s={14} /> Create account
             </button>
           </div>
         </section>
 
+        {/* User list panel */}
         <section className="admin-panel">
           <div className="admin-panel-head">
             <div><h3>Accounts</h3><p>{users.length} total users</p></div>
           </div>
-          <div style={{ padding: "0 16px 12px" }}>
-            <input className="ds-search" placeholder="Search users…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <div style={{ padding: "0 16px 10px", display: "flex", gap: 8 }}>
+            <input className="ds-search" style={{ flex: 1 }} placeholder="Search users…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <select className="om-filter" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+              <option value="all">All roles</option>
+              <option value="admin">Admin</option>
+              <option value="caregiver">Caregiver</option>
+              <option value="newHire">New Hire</option>
+              <option value="officeManager">Office Mgr</option>
+              <option value="client">Client</option>
+            </select>
           </div>
           <div className="admin-user-list">
             {filtered.map((user) => (
               <div className="admin-user-row" key={user.id}>
-                <div className="admin-user-avatar" style={{ opacity: user.status === "inactive" ? 0.4 : 1 }}>{user.initials}</div>
+                <div className="admin-user-avatar" style={{ opacity: user.status !== "active" ? 0.4 : 1, background: `linear-gradient(135deg, ${ROLE_COLORS[user.role] || "var(--accent)"}, ${ROLE_COLORS[user.role] || "var(--accent)"}88)` }}>{user.initials}</div>
                 <div className="admin-user-copy">
                   <strong>{user.name}</strong>
-                  <span>{user.username}</span>
-                  {user.lastLoginAt && <span style={{ fontSize: 11, color: "var(--ink-4)" }}>Last login {relTime(user.lastLoginAt)}</span>}
+                  <span>@{user.username}</span>
+                  {user.mustChangePassword && <span style={{ fontSize: 10, color: "var(--warn)", fontWeight: 700 }}>Temp password</span>}
+                  {user.lastLoginAt && !user.mustChangePassword && <span style={{ fontSize: 10, color: "var(--ink-4)" }}>Last login {relTime(user.lastLoginAt)}</span>}
                 </div>
-                <span className="ui-tag">{user.role}</span>
-                {user.status === "inactive" && <span className="spill warn" style={{ fontSize: 10 }}>Inactive</span>}
-                <button className="dbtn dbtn-ghost" style={{ padding: "4px 9px", fontSize: 11 }} onClick={() => setEditUser({ ...user })}>
-                  Edit
-                </button>
+                <span className="ui-tag" style={{ background: `${ROLE_COLORS[user.role]}18`, color: ROLE_COLORS[user.role] || "var(--accent-deep)", borderColor: `${ROLE_COLORS[user.role]}28` }}>
+                  {ROLE_LABELS[user.role] || user.role}
+                </span>
+                {user.status !== "active" && <span className="spill warn" style={{ fontSize: 10 }}>Inactive</span>}
+                <div style={{ display: "flex", gap: 4 }}>
+                  {user.mustChangePassword && (
+                    <button className="dbtn dbtn-ghost" style={{ padding: "4px 8px", fontSize: 10 }} onClick={() => revealPassword(user)} title="View temp password">
+                      🔑
+                    </button>
+                  )}
+                  <button className="dbtn dbtn-ghost" style={{ padding: "4px 9px", fontSize: 11 }} onClick={() => setEditUser({ ...user })}>Edit</button>
+                </div>
               </div>
             ))}
-            {filtered.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>No users found. Create the first user on the left.</div>}
+            {filtered.length === 0 && <div style={{ padding: 24, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>No users found.</div>}
           </div>
         </section>
       </div>
@@ -726,6 +942,7 @@ function ClientsPage({ onToast }) {
   const emptyForm = { name: "", dob: "", mrn: "", physician: "", allergies: "", phone: "", address: "", primaryContact: "", notes: "", assignedUserIds: [] };
   const [form, setForm] = useState(emptyForm);
   const [editClient, setEditClient] = useState(null);
+  const [editAssignments, setEditAssignments] = useState([]);
   const [search, setSearch] = useState("");
 
   useEffect(() => Store.subscribe(() => force((v) => v + 1)), []);
@@ -740,9 +957,20 @@ function ClientsPage({ onToast }) {
     onToast("Client created");
   };
 
+  const openEdit = async (client) => {
+    setEditClient({ ...client });
+    try {
+      const ids = await Store.getClientAssignments(client.id);
+      setEditAssignments(ids);
+    } catch {
+      setEditAssignments([]);
+    }
+  };
+
   const doEdit = async () => {
     if (!editClient) return;
     await Store.updateClient(editClient.id, editClient);
+    await Store.updateClientAssignments(editClient.id, editAssignments);
     onToast("Client updated");
     setEditClient(null);
   };
@@ -781,6 +1009,23 @@ function ClientsPage({ onToast }) {
                   }
                 </div>
               ))}
+              {caregivers.length > 0 && (
+                <div className="form-row">
+                  <label className="form-label">Assigned caregivers</label>
+                  <div className="admin-checkbox-stack" style={{ marginTop: 4 }}>
+                    {caregivers.map((cg) => {
+                      const sel = editAssignments.includes(cg.id);
+                      return (
+                        <button key={cg.id} className={`admin-check-row${sel ? " selected" : ""}`}
+                          onClick={() => setEditAssignments(sel ? editAssignments.filter((id) => id !== cg.id) : [...editAssignments, cg.id])}>
+                          <span>{cg.name}</span>
+                          <Icon n={sel ? "checkCircle" : "users"} s={16} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="modal-foot">
               <button className="dbtn dbtn-ghost" onClick={() => setEditClient(null)}>Cancel</button>
@@ -850,7 +1095,7 @@ function ClientsPage({ onToast }) {
                   {client.status === "inactive" && <span style={{ fontSize: 11, color: "var(--amber)" }}>Archived</span>}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <button className="dbtn dbtn-ghost" style={{ padding: "4px 9px", fontSize: 11 }} onClick={() => setEditClient({ ...client })}>Edit</button>
+                  <button className="dbtn dbtn-ghost" style={{ padding: "4px 9px", fontSize: 11 }} onClick={() => openEdit(client)}>Edit</button>
                   {client.status !== "inactive" && (
                     <button className="dbtn dbtn-ghost" style={{ padding: "4px 9px", fontSize: 11, color: "var(--amber)" }} onClick={() => doArchive(client)}>Archive</button>
                   )}

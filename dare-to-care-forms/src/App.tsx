@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './app/AuthContext';
+import { AuthProvider, useAuth, type Role } from './app/AuthContext';
 import LoginPage from './app/LoginPage';
 import SetupPage from './app/SetupPage';
 import ChangePasswordPage from './app/ChangePasswordPage';
@@ -10,6 +10,8 @@ import { CaregiverDashboard } from './features/caregiver/CaregiverDashboard';
 // @ts-ignore
 import { AdminApp } from './components/admin.jsx';
 import { OfficeManagerApp } from './features/office-manager/OfficeManagerApp';
+import NewHirePortal from './features/new-hire/NewHirePortal';
+import ClientPortal from './features/client/ClientPortal';
 
 import './styles/shell.css';
 import './styles/desktop.css';
@@ -32,7 +34,6 @@ function AdminRoute() {
   const navigate = useNavigate();
   const [toast, setToast] = useState<string | null>(null);
 
-  // Derive page from URL
   const segments = location.pathname.split('/').filter(Boolean);
   const page = segments[1] || 'dashboard';
 
@@ -86,14 +87,30 @@ function OfficeManagerRoute() {
 
 /* ===== Root redirect based on role ===== */
 function RoleRedirect() {
-  const { user, isAuthenticated, isLoading } = useAuth();
-  if (isLoading) {
-    return null;
-  }
+  const { user, isAuthenticated, isLoading, effectiveRole } = useAuth();
+  if (isLoading) return null;
   if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
   if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
-  const paths = { admin: '/admin', caregiver: '/caregiver', officeManager: '/office-manager' };
-  return <Navigate to={paths[user.role]} replace />;
+  const paths: Record<Role, string> = {
+    admin: '/admin',
+    caregiver: '/caregiver',
+    officeManager: '/office-manager',
+    newHire: '/new-hire',
+    client: '/client',
+  };
+  const role = (effectiveRole ?? user.role) as Role;
+  return <Navigate to={paths[role] || '/login'} replace />;
+}
+
+/* ===== Preview-aware protected route ===== */
+function PreviewAwareRoute({ realRoles, previewRole, children }: { realRoles: Role[]; previewRole: Role; children: React.ReactNode }) {
+  const { user, effectiveRole } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  // Admin previewing this role gets access
+  if (user.role === 'admin' && effectiveRole === previewRole) return <>{children}</>;
+  // Real role check
+  if (!realRoles.includes(user.role as Role)) return <Navigate to="/" replace />;
+  return <>{children}</>;
 }
 
 /* ===== Main app ===== */
@@ -121,26 +138,50 @@ export default function App() {
 
           {/* Caregiver */}
           <Route path="/caregiver" element={
-            <ProtectedRoute allowedRoles={['caregiver']}>
+            <PreviewAwareRoute realRoles={['caregiver']} previewRole="caregiver">
               <AppShell><CaregiverRoute /></AppShell>
-            </ProtectedRoute>
+            </PreviewAwareRoute>
           } />
           <Route path="/caregiver/*" element={
-            <ProtectedRoute allowedRoles={['caregiver']}>
+            <PreviewAwareRoute realRoles={['caregiver']} previewRole="caregiver">
               <AppShell><CaregiverRoute /></AppShell>
-            </ProtectedRoute>
+            </PreviewAwareRoute>
           } />
 
           {/* Office Manager */}
           <Route path="/office-manager" element={
-            <ProtectedRoute allowedRoles={['officeManager']}>
+            <PreviewAwareRoute realRoles={['officeManager']} previewRole="officeManager">
               <AppShell><OfficeManagerRoute /></AppShell>
-            </ProtectedRoute>
+            </PreviewAwareRoute>
           } />
           <Route path="/office-manager/*" element={
-            <ProtectedRoute allowedRoles={['officeManager']}>
+            <PreviewAwareRoute realRoles={['officeManager']} previewRole="officeManager">
               <AppShell><OfficeManagerRoute /></AppShell>
-            </ProtectedRoute>
+            </PreviewAwareRoute>
+          } />
+
+          {/* New Hire */}
+          <Route path="/new-hire" element={
+            <PreviewAwareRoute realRoles={['newHire']} previewRole="newHire">
+              <AppShell><NewHirePortal /></AppShell>
+            </PreviewAwareRoute>
+          } />
+          <Route path="/new-hire/*" element={
+            <PreviewAwareRoute realRoles={['newHire']} previewRole="newHire">
+              <AppShell><NewHirePortal /></AppShell>
+            </PreviewAwareRoute>
+          } />
+
+          {/* Client */}
+          <Route path="/client" element={
+            <PreviewAwareRoute realRoles={['client']} previewRole="client">
+              <AppShell><ClientPortal /></AppShell>
+            </PreviewAwareRoute>
+          } />
+          <Route path="/client/*" element={
+            <PreviewAwareRoute realRoles={['client']} previewRole="client">
+              <AppShell><ClientPortal /></AppShell>
+            </PreviewAwareRoute>
           } />
 
           {/* Catch-all */}

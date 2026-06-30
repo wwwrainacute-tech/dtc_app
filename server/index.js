@@ -6,7 +6,8 @@ const cors = require("cors");
 const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const { getStore } = require("@netlify/blobs");
 const {
-  createAuditEvent, createClient, updateClient, createSession, createTask,
+  createAuditEvent, createClient, updateClient, updateClientAssignments, getClientAssignments,
+  createSession, createTask, getTaskById,
   createUser, deleteSession, getSessionUser, getSubmissionById, getSubmissionByPdfUrl,
   getTemplateByKey, getTemplateVersions, getUserByUsername, getUserCount, getUserById,
   importTemplate, initDB, insertSubmission, listAudit, listClientsForUser,
@@ -568,6 +569,17 @@ async function requireAssignedClient(user, clientId) {
 
 const VALID_STATUSES = ["submitted", "reviewed", "needsCorrection"];
 
+// ─── Recurrence helper ──────────────────────────────────────────────────────
+function computeNextDue(dueDateStr, recurrence) {
+  const OFFSETS = { daily: 1, weekly: 7, biweekly: 14, monthly: 30 };
+  const days = OFFSETS[recurrence];
+  if (!days) return null;
+  const base = new Date();
+  base.setHours(0, 0, 0, 0);
+  base.setDate(base.getDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, timestamp: new Date().toISOString() }));
@@ -618,6 +630,7 @@ app.post("/api/auth/change-password", requireAuth, async (req, res) => {
       passwordHash: hashPassword(newPassword),
       mustChangePassword: false,
       tempPasswordExpiresAt: null,
+      clearTempPassword: true,
     });
     
     await createAuditEvent({
@@ -669,6 +682,12 @@ app.post("/api/auth/logout", requireAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+// /api/users alias — store.js uses this path for office managers
+app.get("/api/users", requireAuth, requireRole("admin", "officeManager"), async (_req, res) => {
+  try { res.json((await listUsers()).map(sanitizeUser)); }
+  catch (error) { res.status(500).json({ error: error.message }); }
+});
+
 // Admin Users Management
 app.get("/api/admin/users", requireAuth, requireRole("admin", "officeManager"), async (_req, res) => {
   try { res.json((await listUsers()).map(sanitizeUser)); }
@@ -681,9 +700,10 @@ app.post("/api/admin/users", requireAuth, requireRole("admin"), async (req, res)
     if (!name || !username || !role || !password) {
       res.status(400).json({ error: "Name, username, role, and password are required." }); return;
     }
-    const created = await createUser({ 
-      name, username, role, password, 
-      mustChangePassword: 1, 
+    const created = await createUser({
+      name, username, role, password,
+      mustChangePassword: 1,
+      storeTempPassword: true,
       tempPasswordExpiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(), // 7 days
       createdByAdminId: req.user.id
     });
@@ -761,6 +781,68 @@ app.post("/api/admin/users/:id/enable", requireAuth, requireRole("admin"), async
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+// ── Admin utility: suggest username from name ──────────────────────────────
+app.get("/api/admin/suggest-username", requireAuth, requireRole("admin"), async (req, res) => {
+  try {
+    const name = String(req.query.name || "").trim();
+    if (!name) { res.status(400).json({ error: "name is required" }); return; }
+    const parts = name.split(/\s+/).filter(Boolean);
+    if (parts.length < 2) { res.json({ suggestion: parts[0].toLowerCase().replace(/[^a-z0-9]/gi, "") }); return; }
+    const first = parts[0][0].toLowerCase();
+    const last = parts[parts.length - 1].toLowerCase().replace(/[^a-z0-9]/gi, "");
+    const base = `${first}${last}`;
+    const users = await listUsers();
+    const taken = new Set(users.map((u) => u.username.toLowerCase()));
+    if (!taken.has(base)) { res.json({ suggestion: base }); return; }
+    let n = 1;
+    while (taken.has(`${base}${n}`)) n++;
+    res.json({ suggestion: `${base}${n}` });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ── Admin utility: generate a secure temp password ─────────────────────────
+app.get("/api/admin/generate-password", requireAuth, requireRole("admin"), (_req, res) => {
+  const charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$";
+  let pwd = "";
+  // Ensure at least one of each required type
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const lower = "abcdefghjkmnpqrstuvwxyz";
+  const digits = "23456789";
+  const special = "!@#$";
+  pwd += upper[Math.floor(Math.random() * upper.length)];
+  pwd += lower[Math.floor(Math.random() * lower.length)];
+  pwd += digits[Math.floor(Math.random() * digits.length)];
+  pwd += special[Math.floor(Math.random() * special.length)];
+  while (pwd.length < 12) {
+    pwd += charset[Math.floor(Math.random() * charset.length)];
+  }
+  // Shuffle
+  pwd = pwd.split("").sort(() => Math.random() - 0.5).join("");
+  res.json({ password: pwd });
+});
+
+// ── Admin: reveal user temp password (audit-logged, admin-only) ────────────
+// Only works while the user hasn't changed their password yet (temp_password_plain is cleared on change)
+app.get("/api/admin/users/:id/reveal-password", requireAuth, requireRole("admin"), async (req, res) => {
+  try {
+    const { get: dbGet } = require("./db");
+    const rawRow = await dbGet("SELECT id, username, name, must_change_password, temp_password_plain FROM users WHERE id = ?", [req.params.id]);
+    if (!rawRow) { res.status(404).json({ error: "User not found." }); return; }
+    await createAuditEvent({
+      actorId: req.user.id, actorName: req.user.name, role: req.user.role,
+      action: "revealed_user_password", targetType: "user", targetId: req.params.id,
+      targetLabel: rawRow.name || req.params.id, metadata: { ip: getRequestIp(req) },
+    });
+    res.json({
+      tempPassword: rawRow.temp_password_plain || null,
+      mustChangePassword: rawRow.must_change_password === 1,
+      note: rawRow.temp_password_plain
+        ? "This is the temporary password. It will be hidden once the user sets their own password."
+        : "The user has already changed their password. Only they know it.",
+    });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
 // Clients
 app.get("/api/clients", requireAuth, async (req, res) => {
   try { res.json(await listClientsForUser(req.user)); }
@@ -791,6 +873,25 @@ app.patch("/api/clients/:id", requireAuth, requireRole("admin", "officeManager")
       metadata: { status: updated.status },
     });
     res.json(updated);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// Client caregiver assignment
+app.get("/api/clients/:id/assignments", requireAuth, requireRole("admin", "officeManager"), async (req, res) => {
+  try { res.json(await getClientAssignments(req.params.id)); }
+  catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.put("/api/clients/:id/assignments", requireAuth, requireRole("admin"), async (req, res) => {
+  try {
+    const { userIds = [] } = req.body || {};
+    await updateClientAssignments(req.params.id, userIds);
+    await createAuditEvent({
+      actorId: req.user.id, actorName: req.user.name, role: req.user.role,
+      action: "updated_client_assignments", targetType: "client", targetId: req.params.id,
+      targetLabel: req.params.id, metadata: { assignedCount: userIds.length },
+    });
+    res.json({ ok: true, userIds });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -890,6 +991,34 @@ app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
     const completedAt = status === "completed" ? new Date().toISOString() : null;
     const updated = await updateTask(req.params.id, { status, completedAt, submissionId });
     if (!updated) { res.status(404).json({ error: "Task not found." }); return; }
+
+    // Spawn the next occurrence for recurring tasks
+    if (status === "completed" && updated.recurrence) {
+      const nextDue = computeNextDue(updated.dueDate, updated.recurrence);
+      if (nextDue) {
+        await createTask({
+          title: updated.title,
+          taskType: updated.taskType,
+          schemaKey: updated.schemaKey,
+          clientId: updated.clientId,
+          clientName: updated.clientName,
+          assignedToId: updated.assignedToId,
+          assignedToName: updated.assignedToName,
+          dueDate: nextDue,
+          recurrence: updated.recurrence,
+          priority: updated.priority,
+          createdBy: req.user ? req.user.name : "system",
+        });
+        await createAuditEvent({
+          actorId: req.user?.id || "system", actorName: req.user?.name || "System",
+          role: req.user?.role || "system",
+          action: "spawned_recurring_task", targetType: "task", targetId: updated.id,
+          targetLabel: updated.title,
+          metadata: { recurrence: updated.recurrence, nextDue },
+        });
+      }
+    }
+
     res.json(updated);
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
