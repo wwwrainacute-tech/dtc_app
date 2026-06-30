@@ -726,6 +726,7 @@ function ClientsPage({ onToast }) {
   const emptyForm = { name: "", dob: "", mrn: "", physician: "", allergies: "", phone: "", address: "", primaryContact: "", notes: "", assignedUserIds: [] };
   const [form, setForm] = useState(emptyForm);
   const [editClient, setEditClient] = useState(null);
+  const [editAssignments, setEditAssignments] = useState([]);
   const [search, setSearch] = useState("");
 
   useEffect(() => Store.subscribe(() => force((v) => v + 1)), []);
@@ -740,9 +741,20 @@ function ClientsPage({ onToast }) {
     onToast("Client created");
   };
 
+  const openEdit = async (client) => {
+    setEditClient({ ...client });
+    try {
+      const ids = await Store.getClientAssignments(client.id);
+      setEditAssignments(ids);
+    } catch {
+      setEditAssignments([]);
+    }
+  };
+
   const doEdit = async () => {
     if (!editClient) return;
     await Store.updateClient(editClient.id, editClient);
+    await Store.updateClientAssignments(editClient.id, editAssignments);
     onToast("Client updated");
     setEditClient(null);
   };
@@ -781,6 +793,23 @@ function ClientsPage({ onToast }) {
                   }
                 </div>
               ))}
+              {caregivers.length > 0 && (
+                <div className="form-row">
+                  <label className="form-label">Assigned caregivers</label>
+                  <div className="admin-checkbox-stack" style={{ marginTop: 4 }}>
+                    {caregivers.map((cg) => {
+                      const sel = editAssignments.includes(cg.id);
+                      return (
+                        <button key={cg.id} className={`admin-check-row${sel ? " selected" : ""}`}
+                          onClick={() => setEditAssignments(sel ? editAssignments.filter((id) => id !== cg.id) : [...editAssignments, cg.id])}>
+                          <span>{cg.name}</span>
+                          <Icon n={sel ? "checkCircle" : "users"} s={16} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="modal-foot">
               <button className="dbtn dbtn-ghost" onClick={() => setEditClient(null)}>Cancel</button>
@@ -850,7 +879,7 @@ function ClientsPage({ onToast }) {
                   {client.status === "inactive" && <span style={{ fontSize: 11, color: "var(--amber)" }}>Archived</span>}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <button className="dbtn dbtn-ghost" style={{ padding: "4px 9px", fontSize: 11 }} onClick={() => setEditClient({ ...client })}>Edit</button>
+                  <button className="dbtn dbtn-ghost" style={{ padding: "4px 9px", fontSize: 11 }} onClick={() => openEdit(client)}>Edit</button>
                   {client.status !== "inactive" && (
                     <button className="dbtn dbtn-ghost" style={{ padding: "4px 9px", fontSize: 11, color: "var(--amber)" }} onClick={() => doArchive(client)}>Archive</button>
                   )}

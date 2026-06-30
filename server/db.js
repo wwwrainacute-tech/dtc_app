@@ -217,11 +217,6 @@ function mapAudit(row) {
 // ─── initDB ────────────────────────────────────────────────────────────────
 
 async function initDB() {
-  // Drop tables for overhaul (ensures clean schema on next start)
-  await run(`DROP TABLE IF EXISTS client_assignments`);
-  await run(`DROP TABLE IF EXISTS sessions`);
-  await run(`DROP TABLE IF EXISTS users`);
-
   await run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
@@ -695,14 +690,30 @@ async function createTask({ title, taskType, schemaKey, clientId, clientName, as
   return mapTask(row);
 }
 
+async function getTaskById(id) {
+  const row = await get(`SELECT * FROM tasks WHERE id = ?`, [id]);
+  return mapTask(row);
+}
+
 async function updateTask(id, { status, completedAt, submissionId }) {
   const updatedAt = nowIso();
   await run(
     `UPDATE tasks SET status = ?, completed_at = ?, submission_id = ?, updated_at = ? WHERE id = ?`,
     [status, completedAt || null, submissionId || null, updatedAt, id],
   );
-  const row = await get(`SELECT * FROM tasks WHERE id = ?`, [id]);
-  return mapTask(row);
+  return getTaskById(id);
+}
+
+async function updateClientAssignments(clientId, userIds) {
+  await run(`DELETE FROM client_assignments WHERE client_id = ?`, [clientId]);
+  for (const userId of (userIds || [])) {
+    await run(`INSERT OR IGNORE INTO client_assignments (client_id, user_id) VALUES (?, ?)`, [clientId, userId]);
+  }
+}
+
+async function getClientAssignments(clientId) {
+  const rows = await all(`SELECT user_id FROM client_assignments WHERE client_id = ?`, [clientId]);
+  return rows.map((r) => r.user_id);
 }
 
 // ─── Audit functions ───────────────────────────────────────────────────────
@@ -727,6 +738,9 @@ module.exports = {
   createAuditEvent,
   createClient,
   updateClient,
+  updateClientAssignments,
+  getClientAssignments,
+  getTaskById,
   createSession,
   createTask,
   createUser,

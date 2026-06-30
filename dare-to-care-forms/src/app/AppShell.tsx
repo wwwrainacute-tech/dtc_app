@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth, type Role } from "./AuthContext";
+// @ts-ignore
+import { DTCStore as Store } from "../components/store";
 
 interface NavItem {
   to: string;
@@ -122,12 +124,43 @@ function NavIcon({ name }: { name: string }) {
   return <svg {...svgProps}>{icons[name] || null}</svg>;
 }
 
+function useBadgeCounts(role: Role, userId: string) {
+  const [counts, setCounts] = useState({ corrections: 0, pendingReview: 0, queued: 0 });
+  useEffect(() => {
+    const update = () => {
+      const subs = Store.getSubmissions();
+      const queued = Store.getQueuedSubmissions?.() ?? [];
+      if (role === "caregiver") {
+        const corrections = subs.filter((s: any) => s.caregiverId === userId && s.status === "needsCorrection").length;
+        setCounts({ corrections, pendingReview: 0, queued: queued.length });
+      } else {
+        const pendingReview = subs.filter((s: any) => s.status === "submitted").length;
+        setCounts({ corrections: 0, pendingReview, queued: 0 });
+      }
+    };
+    const unsub = Store.subscribe(update);
+    return unsub;
+  }, [role, userId]);
+  return counts;
+}
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true);
+    const goOnline = () => setIsOffline(false);
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => { window.removeEventListener("offline", goOffline); window.removeEventListener("online", goOnline); };
+  }, []);
+
+  const badges = useBadgeCounts(user?.role as Role, user?.id ?? "");
 
   React.useEffect(() => {
     setSidebarOpen(false);
@@ -173,10 +206,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               ? location.pathname === item.to || location.pathname === `${item.to}/`
               : location.pathname.startsWith(item.to);
 
+            // Compute badge count for this specific nav item
+            let badge = 0;
+            if (user?.role === "caregiver" && item.to.includes("/caregiver") && isRootPath) {
+              badge = badges.corrections + badges.queued;
+            } else if (item.label === "Records") {
+              badge = badges.corrections;
+            } else if (item.label === "Submissions") {
+              badge = badges.pendingReview;
+            }
+
             return (
               <NavLink key={item.to} to={item.to} end={isRootPath} className={({ isActive }) => `shell-nav-item${active || isActive ? " active" : ""}`}>
                 <NavIcon name={item.icon} />
                 <span>{item.label}</span>
+                {badge > 0 && <span className="nav-badge">{badge > 99 ? "99+" : badge}</span>}
               </NavLink>
             );
           })}
@@ -206,6 +250,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="shell-main">
+        {isOffline && (
+          <div className="offline-banner" role="status">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0119 12.55" /><path d="M5 12.55a10.94 10.94 0 015.17-2.39" /><path d="M10.71 5.05A16 16 0 0122.56 9" /><path d="M1.42 9a15.91 15.91 0 014.7-2.88" /><path d="M8.53 16.11a6 6 0 016.95 0" /><circle cx="12" cy="20" r="1" />
+            </svg>
+            You're offline — forms will be queued and submitted when you reconnect
+          </div>
+        )}
         <div className="shell-main-inner">{children}</div>
         <footer className="shell-footer">
           <span>Dare to Care · Forms Platform</span>

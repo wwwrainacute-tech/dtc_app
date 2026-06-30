@@ -239,22 +239,97 @@ function FormsTab({ onStart }: any) {
 // ── Records Tab ────────────────────────────────────────────────────────────
 
 function RecordsTab({ submissions, onOpen }: any) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const queued = Store.getQueuedSubmissions ? Store.getQueuedSubmissions() : [];
+
+  const filtered = submissions.filter((sub: any) => {
+    if (filter === "corrections" && sub.status !== "needsCorrection") return false;
+    if (filter === "reviewed" && sub.status !== "reviewed") return false;
+    if (filter === "filed" && sub.status === "needsCorrection") return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const schema = getSchema(sub.schemaKey);
+      const name = schema?.name || sub.schemaKey;
+      if (!name.toLowerCase().includes(q) && !sub.clientName?.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  const totalCount = queued.length + submissions.length;
+
   return (
     <div className="view">
       <div className="appbar">
         <div className="title-row"><h2>My records</h2></div>
-        <div className="datestrip"><span className="dot" />{submissions.length} submitted</div>
+        <div className="datestrip"><span className="dot" />{totalCount} total</div>
       </div>
       <div className="pad" style={{ paddingTop: 4 }}>
-        {submissions.length === 0 ? (
+        {/* Search + filter bar */}
+        {totalCount > 0 && (
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <div style={{ position: "relative", flex: 1 }}>
+              <Icon n="search" s={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--ink-4)", pointerEvents: "none" }} />
+              <input
+                className="rec-search"
+                placeholder="Search forms or clients…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ paddingLeft: 32 }}
+              />
+            </div>
+            <select className="rec-filter" value={filter} onChange={(e) => setFilter(e.target.value)}>
+              <option value="all">All</option>
+              <option value="corrections">Corrections</option>
+              <option value="reviewed">Reviewed</option>
+              <option value="filed">Filed</option>
+            </select>
+          </div>
+        )}
+
+        {/* Offline queued items */}
+        {queued.length > 0 && (
+          <>
+            <div className="section-label" style={{ color: "var(--warn)" }}>
+              <Icon n="wifi" s={13} style={{ marginRight: 5, verticalAlign: "-1px" }} />
+              Pending upload ({queued.length})
+            </div>
+            <div className="card" style={{ padding: "4px 16px", borderLeft: "3px solid var(--warn)", marginBottom: 8 }}>
+              {queued.map((item: any) => {
+                const schema = getSchema(item.schemaKey);
+                return (
+                  <div className="subrow" key={item.id} style={{ opacity: 0.82 }}>
+                    <span className="si" style={{ color: "var(--warn)" }}>
+                      <Icon n={schema?.icon || "file"} s={18} />
+                    </span>
+                    <span className="sinfo">
+                      <span className="nm">{schema?.name || item.schemaKey}</span>
+                      <span className="meta">
+                        {item.clientName ? `${item.clientName} · ` : ""}
+                        Queued {fmtDate(item.queuedAt?.slice(0, 10))}
+                      </span>
+                    </span>
+                    <span className="stat" style={{ color: "var(--warn)", background: "rgba(215,146,59,0.1)" }}>Pending</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {submissions.length === 0 && queued.length === 0 ? (
           <div className="empty">
             <div className="ei"><Icon n="inbox" s={24} /></div>
             <h4>No records yet</h4>
             <p>Forms you complete and submit will appear here, each with its signed PDF.</p>
           </div>
+        ) : filtered.length === 0 ? (
+          <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
+            No records match your search.
+          </div>
         ) : (
           <div className="card" style={{ padding: "4px 16px" }}>
-            {submissions.map((sub: any) => {
+            {filtered.map((sub: any) => {
               const schema = getSchema(sub.schemaKey);
               const needsCorrection = sub.status === "needsCorrection";
               return (
