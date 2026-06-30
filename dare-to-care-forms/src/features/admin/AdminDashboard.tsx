@@ -75,20 +75,24 @@ export function AdminDashboard() {
             </div>
           </div>
           <div className="admin-activity-list">
-            {audit.slice(0, 6).map((event: any) => (
-              <div key={event.id} className="admin-activity-row">
-                <div className="admin-activity-icon">
-                  <Icon n={event.action.includes("template") ? "layers" : event.action.includes("client") ? "users" : "fileText"} s={15} />
+            {audit.length === 0 ? (
+              <div className="admin-empty-inline">No recent activity. Audit events will appear here once users log in or perform actions.</div>
+            ) : (
+              audit.slice(0, 6).map((event: any) => (
+                <div key={event.id} className="admin-activity-row">
+                  <div className="admin-activity-icon">
+                    <Icon n={event.action.includes("template") ? "layers" : event.action.includes("client") ? "users" : "fileText"} s={15} />
+                  </div>
+                  <div className="admin-activity-copy">
+                    <strong>{event.target}</strong>
+                    <span>
+                      {event.actor} · {event.action.replaceAll("_", " ")}
+                    </span>
+                  </div>
+                  <span className="admin-activity-role">{event.role}</span>
                 </div>
-                <div className="admin-activity-copy">
-                  <strong>{event.target}</strong>
-                  <span>
-                    {event.actor} · {event.action.replaceAll("_", " ")}
-                  </span>
-                </div>
-                <span className="admin-activity-role">{event.role}</span>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </section>
 

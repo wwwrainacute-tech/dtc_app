@@ -99,7 +99,7 @@ export const DTCStore = {
   },
 
   get currentUser() { return getStoredUser(); },
-  get clients() { return state.clients.length ? state.clients : DTC.clients; },
+  get clients() { return state.clients; },
   get users() { return state.users.slice(); },
 
   async refresh() { await refresh(); },

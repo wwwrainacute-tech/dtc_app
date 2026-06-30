@@ -3,44 +3,6 @@ import { getStoredUser } from "../app/auth-storage.js";
 
 const TODAY_ISO = new Date().toISOString().slice(0, 10);
 
-const clients = [
-  {
-    id: "c1",
-    name: "Eleanor Pratt",
-    dob: "1939-04-12",
-    mrn: "DTC-10293",
-    physician: "Dr. A. Bello",
-    allergies: "Penicillin; sulfa drugs",
-    address: "14 Linden Ct, Apt 3",
-    phone: "(555) 217-4408",
-    tags: ["Fall risk", "Mon Wed Fri"],
-    initials: "EP",
-  },
-  {
-    id: "c2",
-    name: "Harold Okafor",
-    dob: "1945-11-02",
-    mrn: "DTC-10311",
-    physician: "Dr. R. Singh",
-    allergies: "None known",
-    address: "902 Maple Ave",
-    phone: "(555) 661-2093",
-    tags: ["Daily visit"],
-    initials: "HO",
-  },
-  {
-    id: "c3",
-    name: "Doris Mbeki",
-    dob: "1951-07-28",
-    mrn: "DTC-10350",
-    physician: "Dr. L. Hahn",
-    allergies: "Latex",
-    address: "31 Birchwood Ln",
-    phone: "(555) 880-1145",
-    tags: ["Tue Thu"],
-    initials: "DM",
-  },
-];
 
 const schemas = {
   fallRisk: {
@@ -389,9 +351,8 @@ function invalidFieldsInSection(section, values) {
 
 export const DTC = {
   TODAY_ISO,
-  clients,
   get currentUser() {
-    return getStoredUser() || { id: "u_cg", name: "Jordan Rivera", label: "Jordan Rivera", role: "caregiver", initials: "JR" };
+    return getStoredUser();
   },
   schemas,
   formMeta,

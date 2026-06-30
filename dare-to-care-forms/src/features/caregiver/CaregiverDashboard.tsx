@@ -191,9 +191,15 @@ function TodayTab({ tasks, onStartTask, submissions }: any) {
         })()}
 
         <div className="section-label">Start a form</div>
-        {Store.publishedKeysFor("caregiver").map((key: string) => (
-          <FormCard key={key} schemaKey={key} onStart={() => onStartTask("schema", { schemaKey: key })} />
-        ))}
+        {Store.publishedKeysFor("caregiver").length === 0 ? (
+          <div className="card" style={{ padding: 16, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>
+            No forms published yet.
+          </div>
+        ) : (
+          Store.publishedKeysFor("caregiver").map((key: string) => (
+            <FormCard key={key} schemaKey={key} onStart={() => onStartTask("schema", { schemaKey: key })} />
+          ))
+        )}
       </div>
     </div>
   );
@@ -212,9 +218,15 @@ function FormsTab({ onStart }: any) {
         </div>
       </div>
       <div className="pad" style={{ paddingTop: 4 }}>
-        {published.map((key: string) => (
-          <FormCard key={key} schemaKey={key} onStart={() => onStart(key, null)} />
-        ))}
+        {published.length === 0 ? (
+          <div className="card" style={{ padding: 24, textAlign: "center" }}>
+            <p style={{ color: "var(--ink-3)", fontSize: 13 }}>No forms have been published for you yet.</p>
+          </div>
+        ) : (
+          published.map((key: string) => (
+            <FormCard key={key} schemaKey={key} onStart={() => onStart(key, null)} />
+          ))
+        )}
         <p style={{ fontSize: 11.5, color: "var(--ink-3)", textAlign: "center", marginTop: 22, lineHeight: 1.5 }}>
           Published by Admin from imported PDFs.<br />
           Caregivers only see templates meant for their role.
@@ -285,26 +297,32 @@ function ClientsTab() {
         <div className="datestrip"><span className="dot" />{Store.clients.length} assigned clients</div>
       </div>
       <div className="pad" style={{ paddingTop: 4 }}>
-        {Store.clients.map((client: any) => (
-          <div className="card" key={client.id} style={{ marginTop: 10 }}>
-            <div className="clientcard">
-              <span className="ci">{client.initials}</span>
-              <span className="cinfo">
-                <span className="nm">{client.name}</span>
-                <span className="meta">DOB {fmtDate(client.dob)} · MRN {client.mrn}</span>
-                <span className="meta">{client.physician} · {client.phone}</span>
-                {client.allergies && (
-                  <span className="meta" style={{ color: "var(--amber)" }}>
-                    ⚠ Allergies: {client.allergies}
-                  </span>
-                )}
-                {client.notes && (
-                  <span className="meta" style={{ color: "var(--ink-3)", fontSize: 11 }}>{client.notes}</span>
-                )}
-              </span>
-            </div>
+        {Store.clients.length === 0 ? (
+          <div className="card" style={{ padding: 24, textAlign: "center" }}>
+            <p style={{ color: "var(--ink-3)", fontSize: 13 }}>No clients have been assigned to you yet.</p>
           </div>
-        ))}
+        ) : (
+          Store.clients.map((client: any) => (
+            <div className="card" key={client.id} style={{ marginTop: 10 }}>
+              <div className="clientcard">
+                <span className="ci">{client.initials}</span>
+                <span className="cinfo">
+                  <span className="nm">{client.name}</span>
+                  <span className="meta">DOB {fmtDate(client.dob)} · MRN {client.mrn}</span>
+                  <span className="meta">{client.physician} · {client.phone}</span>
+                  {client.allergies && (
+                    <span className="meta" style={{ color: "var(--amber)" }}>
+                      ⚠ Allergies: {client.allergies}
+                    </span>
+                  )}
+                  {client.notes && (
+                    <span className="meta" style={{ color: "var(--ink-3)", fontSize: 11 }}>{client.notes}</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

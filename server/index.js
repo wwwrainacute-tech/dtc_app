@@ -7,13 +7,13 @@ const { PDFDocument, StandardFonts, rgb } = require("pdf-lib");
 const { getStore } = require("@netlify/blobs");
 const {
   createAuditEvent, createClient, updateClient, createSession, createTask,
-  createUser, deleteSession, getSessionUser, getSubmissionById,
-  getTemplateByKey, getTemplateVersions, getUserByEmail, getUserById,
+  createUser, deleteSession, getSessionUser, getSubmissionById, getSubmissionByPdfUrl,
+  getTemplateByKey, getTemplateVersions, getUserByUsername, getUserCount, getUserById,
   importTemplate, initDB, insertSubmission, listAudit, listClientsForUser,
   listSubmissionsForUser, listTasksForUser, listTemplatesForUser, listUsers,
   publishTemplate, resubmitSubmission, saveTemplate, unpublishTemplate,
   updateSubmissionStatus, updateTask, updateUser, updateUserLastLogin,
-  verifyPassword,
+  verifyPassword, hashPassword,
 } = require("./db");
 
 const app = express();
@@ -50,8 +50,9 @@ app.use(express.json({ limit: "10mb" }));
 function sanitizeUser(user) {
   if (!user) return null;
   return {
-    id: user.id, name: user.name, initials: user.initials, email: user.email,
+    id: user.id, name: user.name, initials: user.initials, username: user.username,
     role: user.role, status: user.status, createdAt: user.createdAt, lastLoginAt: user.lastLoginAt,
+    mustChangePassword: user.mustChangePassword,
   };
 }
 
@@ -90,7 +91,13 @@ function requireRole(...allowedRoles) {
 app.get("/api/files/pdfs/:filename", requireAuth, async (req, res) => {
   try {
     const safeFilename = path.basename(req.params.filename);
+    const pdfUrl = `/api/files/pdfs/${safeFilename}`;
+    const submission = await getSubmissionByPdfUrl(pdfUrl);
     
+    if (submission && req.user.role === "caregiver" && submission.caregiver_id !== req.user.id && submission.caregiverId !== req.user.id) {
+      res.status(403).json({ error: "Access denied. You can only view your own submissions." }); return;
+    }
+
     if (isNetlifyBlobs) {
       const store = getStore("pdfs");
       const blob = await store.get(safeFilename, { type: "stream" });
@@ -568,11 +575,21 @@ app.get("/api/health", (_req, res) => res.json({ ok: true, timestamp: new Date()
 // Auth
 app.post("/api/auth/login", rateLimit(60_000, 10), async (req, res) => {
   try {
-    const { email, password } = req.body || {};
-    const user = await getUserByEmail(String(email || "").trim());
-    if (!user || user.status !== "active" || !verifyPassword(String(password || ""), user.passwordHash)) {
-      res.status(401).json({ error: "Invalid email or password." }); return;
+    const { username, password } = req.body || {};
+    const user = await getUserByUsername(String(username || "").trim());
+    
+    if (!user || !verifyPassword(String(password || ""), user.passwordHash)) {
+      res.status(401).json({ error: "Invalid username or password." }); return;
     }
+    
+    if (user.status !== "active") {
+      res.status(401).json({ error: "This account is disabled. Contact your administrator." }); return;
+    }
+
+    if (user.mustChangePassword && user.tempPasswordExpiresAt && new Date(user.tempPasswordExpiresAt).getTime() < Date.now()) {
+      res.status(401).json({ error: "Temporary password expired. Contact your administrator." }); return;
+    }
+
     const token = await createSession(user.id);
     await updateUserLastLogin(user.id);
     await createAuditEvent({
@@ -581,6 +598,58 @@ app.post("/api/auth/login", rateLimit(60_000, 10), async (req, res) => {
       metadata: { ip: getRequestIp(req) },
     });
     res.json({ token, user: sanitizeUser(user) });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+  try {
+    const { newPassword } = req.body || {};
+    if (!newPassword || newPassword.length < 10) {
+      res.status(400).json({ error: "Password must be at least 10 characters." }); return;
+    }
+    if (verifyPassword(newPassword, req.user.passwordHash)) {
+      res.status(400).json({ error: "New password cannot be the same as your current password." }); return;
+    }
+    if (newPassword.toLowerCase() === req.user.username.toLowerCase()) {
+      res.status(400).json({ error: "Password cannot be your username." }); return;
+    }
+
+    const updated = await updateUser(req.user.id, {
+      passwordHash: hashPassword(newPassword),
+      mustChangePassword: false,
+      tempPasswordExpiresAt: null,
+    });
+    
+    await createAuditEvent({
+      actorId: req.user.id, actorName: req.user.name, role: req.user.role,
+      action: "changed_password", targetType: "user", targetId: req.user.id, targetLabel: "Changed password",
+      metadata: { ip: getRequestIp(req) },
+    });
+    res.json({ ok: true, user: sanitizeUser(updated) });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get("/api/setup/status", async (req, res) => {
+  try {
+    const count = await getUserCount();
+    res.json({ setupRequired: count === 0 });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post("/api/setup/first-admin", async (req, res) => {
+  try {
+    const count = await getUserCount();
+    if (count > 0) {
+      res.status(403).json({ error: "Setup already completed." }); return;
+    }
+    const { name, username, password } = req.body || {};
+    if (!name || !username || !password || password.length < 10) {
+      res.status(400).json({ error: "Name, username, and a password of at least 10 characters are required." }); return;
+    }
+    const created = await createUser({
+      name, username, role: "admin", password, mustChangePassword: 0, tempPasswordExpiresAt: null
+    });
+    res.status(201).json({ ok: true, user: sanitizeUser(created) });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -600,32 +669,37 @@ app.post("/api/auth/logout", requireAuth, async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// Users
-app.get("/api/users", requireAuth, requireRole("admin", "officeManager"), async (_req, res) => {
+// Admin Users Management
+app.get("/api/admin/users", requireAuth, requireRole("admin", "officeManager"), async (_req, res) => {
   try { res.json((await listUsers()).map(sanitizeUser)); }
   catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-app.post("/api/users", requireAuth, requireRole("admin"), async (req, res) => {
+app.post("/api/admin/users", requireAuth, requireRole("admin"), async (req, res) => {
   try {
-    const { name, email, role, password } = req.body || {};
-    if (!name || !email || !role || !password) {
-      res.status(400).json({ error: "Name, email, role, and password are required." }); return;
+    const { name, username, role, password } = req.body || {};
+    if (!name || !username || !role || !password) {
+      res.status(400).json({ error: "Name, username, role, and password are required." }); return;
     }
-    const created = await createUser({ name, email, role, password });
+    const created = await createUser({ 
+      name, username, role, password, 
+      mustChangePassword: 1, 
+      tempPasswordExpiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(), // 7 days
+      createdByAdminId: req.user.id
+    });
     await createAuditEvent({
       actorId: req.user.id, actorName: req.user.name, role: req.user.role,
       action: "created_user", targetType: "user", targetId: created.id, targetLabel: created.name,
-      metadata: { email: created.email, role: created.role },
+      metadata: { username: created.username, role: created.role },
     });
     res.status(201).json(sanitizeUser(created));
   } catch (error) {
     const status = /UNIQUE/.test(error.message) ? 409 : 500;
-    res.status(status).json({ error: status === 409 ? "That email already exists." : error.message });
+    res.status(status).json({ error: status === 409 ? "That username already exists." : error.message });
   }
 });
 
-app.patch("/api/users/:id", requireAuth, requireRole("admin"), async (req, res) => {
+app.patch("/api/admin/users/:id", requireAuth, requireRole("admin"), async (req, res) => {
   try {
     const { name, role, status } = req.body || {};
     const updated = await updateUser(req.params.id, { name, role, status });
@@ -634,6 +708,54 @@ app.patch("/api/users/:id", requireAuth, requireRole("admin"), async (req, res) 
       actorId: req.user.id, actorName: req.user.name, role: req.user.role,
       action: "updated_user", targetType: "user", targetId: updated.id, targetLabel: updated.name,
       metadata: { status: updated.status, role: updated.role },
+    });
+    res.json(sanitizeUser(updated));
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post("/api/admin/users/:id/reset-password", requireAuth, requireRole("admin"), async (req, res) => {
+  try {
+    const { newPassword } = req.body || {};
+    if (!newPassword || newPassword.length < 10) {
+      res.status(400).json({ error: "Password must be at least 10 characters." }); return;
+    }
+    const updated = await updateUser(req.params.id, { 
+      passwordHash: hashPassword(newPassword),
+      mustChangePassword: 1,
+      tempPasswordExpiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString(),
+    });
+    if (!updated) { res.status(404).json({ error: "User not found." }); return; }
+    
+    await createAuditEvent({
+      actorId: req.user.id, actorName: req.user.name, role: req.user.role,
+      action: "reset_user_password", targetType: "user", targetId: updated.id, targetLabel: updated.name,
+      metadata: { ip: getRequestIp(req) },
+    });
+    res.json(sanitizeUser(updated));
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post("/api/admin/users/:id/disable", requireAuth, requireRole("admin"), async (req, res) => {
+  try {
+    const updated = await updateUser(req.params.id, { status: "disabled" });
+    if (!updated) { res.status(404).json({ error: "User not found." }); return; }
+    await createAuditEvent({
+      actorId: req.user.id, actorName: req.user.name, role: req.user.role,
+      action: "disabled_user", targetType: "user", targetId: updated.id, targetLabel: updated.name,
+      metadata: { status: "disabled" },
+    });
+    res.json(sanitizeUser(updated));
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post("/api/admin/users/:id/enable", requireAuth, requireRole("admin"), async (req, res) => {
+  try {
+    const updated = await updateUser(req.params.id, { status: "active" });
+    if (!updated) { res.status(404).json({ error: "User not found." }); return; }
+    await createAuditEvent({
+      actorId: req.user.id, actorName: req.user.name, role: req.user.role,
+      action: "enabled_user", targetType: "user", targetId: updated.id, targetLabel: updated.name,
+      metadata: { status: "active" },
     });
     res.json(sanitizeUser(updated));
   } catch (error) { res.status(500).json({ error: error.message }); }

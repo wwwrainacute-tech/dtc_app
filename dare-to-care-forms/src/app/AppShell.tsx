@@ -186,7 +186,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span className="shell-avatar">{user.initials}</span>
             <span className="shell-user-info">
               <strong>{user.name}</strong>
-              <span>{user.email}</span>
+              <span>{user.username}</span>
             </span>
             <NavIcon name="chevDown" />
           </div>

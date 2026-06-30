@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './app/AuthContext';
 import LoginPage from './app/LoginPage';
+import SetupPage from './app/SetupPage';
+import ChangePasswordPage from './app/ChangePasswordPage';
 import AppShell from './app/AppShell';
 import ProtectedRoute from './app/ProtectedRoute';
 import { CaregiverDashboard } from './features/caregiver/CaregiverDashboard';
@@ -89,6 +91,7 @@ function RoleRedirect() {
     return null;
   }
   if (!isAuthenticated || !user) return <Navigate to="/login" replace />;
+  if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
   const paths = { admin: '/admin', caregiver: '/caregiver', officeManager: '/office-manager' };
   return <Navigate to={paths[user.role]} replace />;
 }
@@ -100,6 +103,8 @@ export default function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/setup" element={<SetupPage />} />
+          <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route path="/" element={<RoleRedirect />} />
 
           {/* Admin */}

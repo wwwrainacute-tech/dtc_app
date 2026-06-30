@@ -451,6 +451,9 @@ function ClientDirectory() {
                 <td style={{ color: c.allergies !== "None known" ? "var(--amber)" : "var(--ink-3)" }}>{c.allergies}</td>
               </tr>
             ))}
+            {clients.length === 0 && (
+              <tr><td colSpan={5} style={{ textAlign: "center", padding: "32px", color: "var(--ink-3)" }}>No clients found.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -501,6 +504,9 @@ function TeamDirectory() {
                 </tr>
               );
             })}
+            {caregivers.length === 0 && (
+              <tr><td colSpan={4} style={{ textAlign: "center", padding: "32px", color: "var(--ink-3)" }}>No caregivers found on the team.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -559,6 +565,9 @@ function AuditView() {
                 <td>{e.target}</td>
               </tr>
             ))}
+            {audit.length === 0 && (
+              <tr><td colSpan={4} style={{ textAlign: "center", padding: "32px", color: "var(--ink-3)" }}>No audit events match the criteria.</td></tr>
+            )}
           </tbody>
         </table>
       </div>

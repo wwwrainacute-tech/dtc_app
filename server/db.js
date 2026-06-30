@@ -115,9 +115,12 @@ function mapUser(row) {
   if (!row) return null;
   return {
     id: row.id, name: row.name, initials: row.initials,
-    email: row.email, role: row.role, status: row.status,
+    username: row.username, role: row.role, status: row.status,
     createdAt: row.created_at, lastLoginAt: row.last_login_at,
     passwordHash: row.password_hash,
+    mustChangePassword: row.must_change_password === 1,
+    tempPasswordExpiresAt: row.temp_password_expires_at,
+    createdByAdminId: row.created_by_admin_id,
   };
 }
 
@@ -209,105 +212,27 @@ function mapAudit(row) {
   };
 }
 
-// ─── Seed data ─────────────────────────────────────────────────────────────
-
-const seedUsers = [
-  { id: "u_admin", name: "Elena Brooks", email: "admin@daretocare.com", role: "admin", status: "active", password: "admin123" },
-  { id: "u_om", name: "Maria Lane", email: "office@daretocare.com", role: "officeManager", status: "active", password: "office123" },
-  { id: "u_cg", name: "Jordan Rivera", email: "caregiver@daretocare.com", role: "caregiver", status: "active", password: "care123" },
-  { id: "u_cg2", name: "Alex Diaz", email: "alex@daretocare.com", role: "caregiver", status: "active", password: "care123" },
-];
-
-const seedClients = [
-  {
-    id: "c1", name: "Eleanor Pratt", initials: "EP", dob: "1939-04-12",
-    mrn: "DTC-10293", physician: "Dr. A. Bello", allergies: "Penicillin; sulfa drugs",
-    phone: "(555) 217-4408", address: "14 Linden Ct, Apt 3", status: "active",
-    primaryContact: "Nora Pratt", notes: "Needs fall-risk review after recent balance changes.",
-  },
-  {
-    id: "c2", name: "Harold Okafor", initials: "HO", dob: "1945-11-02",
-    mrn: "DTC-10311", physician: "Dr. R. Singh", allergies: "None known",
-    phone: "(555) 661-2093", address: "902 Maple Ave", status: "active",
-    primaryContact: "Samuel Okafor", notes: "Medication reconciliation due this week.",
-  },
-  {
-    id: "c3", name: "Doris Mbeki", initials: "DM", dob: "1951-07-28",
-    mrn: "DTC-10350", physician: "Dr. L. Hahn", allergies: "Latex",
-    phone: "(555) 880-1145", address: "31 Birchwood Ln", status: "active",
-    primaryContact: "Maya Mbeki", notes: "Supervisory visit due in 21 days.",
-  },
-];
-
-const seedAssignments = [
-  { clientId: "c1", userId: "u_cg" },
-  { clientId: "c2", userId: "u_cg" },
-  { clientId: "c3", userId: "u_cg2" },
-];
-
-// Seed tasks — real due tasks for caregivers (not hardcoded in UI)
-function buildSeedTasks() {
-  const today = new Date();
-  const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r.toISOString().slice(0, 10); };
-  return [
-    {
-      id: "task_1", title: "Fall Risk Assessment — Eleanor Pratt",
-      taskType: "form", schemaKey: "fallRisk",
-      clientId: "c1", clientName: "Eleanor Pratt",
-      assignedToId: "u_cg", assignedToName: "Jordan Rivera",
-      dueDate: today.toISOString().slice(0, 10),
-      recurrence: "quarterly", priority: "normal", status: "pending",
-      completedAt: null, submissionId: null, createdBy: "Elena Brooks",
-    },
-    {
-      id: "task_2", title: "Medication Reconciliation — Harold Okafor",
-      taskType: "form", schemaKey: "medicationList",
-      clientId: "c2", clientName: "Harold Okafor",
-      assignedToId: "u_cg", assignedToName: "Jordan Rivera",
-      dueDate: addDays(today, -1), // yesterday = late
-      recurrence: "monthly", priority: "urgent", status: "pending",
-      completedAt: null, submissionId: null, createdBy: "Elena Brooks",
-    },
-    {
-      id: "task_3", title: "Caregiver Activity Report — Eleanor Pratt",
-      taskType: "form", schemaKey: "caregiverActivity",
-      clientId: "c1", clientName: "Eleanor Pratt",
-      assignedToId: "u_cg", assignedToName: "Jordan Rivera",
-      dueDate: today.toISOString().slice(0, 10),
-      recurrence: null, priority: "normal", status: "pending",
-      completedAt: null, submissionId: null, createdBy: "Elena Brooks",
-    },
-    {
-      id: "task_4", title: "Workplace Violence Policy Acknowledgement",
-      taskType: "form", schemaKey: "workplaceViolence",
-      clientId: null, clientName: null,
-      assignedToId: "u_cg", assignedToName: "Jordan Rivera",
-      dueDate: addDays(today, 7),
-      recurrence: "annual", priority: "low", status: "pending",
-      completedAt: null, submissionId: null, createdBy: "Elena Brooks",
-    },
-    {
-      id: "task_5", title: "Supervisory Visit — Doris Mbeki",
-      taskType: "supervisory_visit", schemaKey: "supervisoryVisit",
-      clientId: "c3", clientName: "Doris Mbeki",
-      assignedToId: "u_cg2", assignedToName: "Alex Diaz",
-      dueDate: addDays(today, 21),
-      recurrence: null, priority: "normal", status: "pending",
-      completedAt: null, submissionId: null, createdBy: "Maria Lane",
-    },
-  ];
-}
+// Seed data removed for production
 
 // ─── initDB ────────────────────────────────────────────────────────────────
 
 async function initDB() {
-  // Core tables (unchanged structure — safe to recreate with IF NOT EXISTS)
+  // Drop tables for overhaul (ensures clean schema on next start)
+  await run(`DROP TABLE IF EXISTS client_assignments`);
+  await run(`DROP TABLE IF EXISTS sessions`);
+  await run(`DROP TABLE IF EXISTS users`);
+
   await run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL, initials TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE, role TEXT NOT NULL, status TEXT NOT NULL,
-      password_hash TEXT NOT NULL, created_at TEXT NOT NULL, last_login_at TEXT
+      role TEXT NOT NULL, status TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      must_change_password INTEGER NOT NULL DEFAULT 1,
+      temp_password_expires_at TEXT,
+      created_by_admin_id TEXT,
+      created_at TEXT NOT NULL, last_login_at TEXT
     )
   `);
 
@@ -417,78 +342,19 @@ async function initDB() {
   `);
 
   // ── Seed data ──────────────────────────────────────────────────────────
-  if (process.env.SEED_DEMO_DATA === "true" || (!isPostgres && process.env.NODE_ENV !== "production")) {
-    const userCount = await get(`SELECT COUNT(*) AS count FROM users`);
-    if (!userCount || parseInt(userCount.count, 10) === 0) {
-      for (const user of seedUsers) {
-        const createdAt = nowIso();
-        await run(
-          `INSERT INTO users (id, name, initials, email, role, status, password_hash, created_at, last_login_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [user.id, user.name, buildInitials(user.name), user.email, user.role, user.status, hashPassword(user.password), createdAt, null],
-        );
-      }
-    }
-
-    const clientCount = await get(`SELECT COUNT(*) AS count FROM clients`);
-    if (!clientCount || parseInt(clientCount.count, 10) === 0) {
-      for (const client of seedClients) {
-        const createdAt = nowIso();
-        await run(
-          `INSERT INTO clients (id, name, initials, dob, mrn, physician, allergies, phone, address, status, primary_contact, notes, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [client.id, client.name, client.initials, client.dob, client.mrn, client.physician,
-           client.allergies, client.phone, client.address, client.status, client.primaryContact,
-           client.notes, createdAt, createdAt],
-        );
-      }
-    }
-
-    const assignmentCount = await get(`SELECT COUNT(*) AS count FROM client_assignments`);
-    if (!assignmentCount || parseInt(assignmentCount.count, 10) === 0) {
-      for (const a of seedAssignments) {
-        await run(`INSERT OR IGNORE INTO client_assignments (client_id, user_id) VALUES (?, ?)`, [a.clientId, a.userId]);
-      }
-    }
-
-    const templateCount = await get(`SELECT COUNT(*) AS count FROM templates`);
-    if (!templateCount || parseInt(templateCount.count, 10) === 0) {
-      for (const template of buildSeedTemplates("Elena Brooks")) {
-        await run(
-          `INSERT INTO templates (id, key, name, category, description, subject, completed_by_json, version, status, field_count,
-             icon, source_filename, interpretation_json, sections_json, created_by, created_at, updated_at, published_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [template.id, template.key, template.name, template.category, template.description,
-           template.subject, JSON.stringify(template.completedBy), template.version, template.status,
-           template.fieldCount, template.icon, template.sourceFilename,
-           JSON.stringify(template.interpretation), JSON.stringify(template.sections),
-           template.createdBy, template.createdAt, template.updatedAt, template.publishedAt],
-        );
-      }
-    }
-
-    const taskCount = await get(`SELECT COUNT(*) AS count FROM tasks`);
-    if (!taskCount || parseInt(taskCount.count, 10) === 0) {
-      for (const task of buildSeedTasks()) {
-        const createdAt = nowIso();
-        await run(
-          `INSERT INTO tasks (id, title, task_type, schema_key, client_id, client_name, assigned_to_id, assigned_to_name,
-             due_date, recurrence, priority, status, completed_at, submission_id, created_by, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [task.id, task.title, task.taskType, task.schemaKey, task.clientId, task.clientName,
-           task.assignedToId, task.assignedToName, task.dueDate, task.recurrence, task.priority,
-           task.status, task.completedAt, task.submissionId, task.createdBy, createdAt, createdAt],
-        );
-      }
-    }
-  }
+  // Seed data removed for production
 }
 
 // ─── User functions ────────────────────────────────────────────────────────
 
-async function getUserByEmail(email) {
-  const row = await get(`SELECT * FROM users WHERE lower(email) = lower(?)`, [email]);
+async function getUserByUsername(username) {
+  const row = await get(`SELECT * FROM users WHERE lower(username) = lower(?)`, [username]);
   return mapUser(row);
+}
+
+async function getUserCount() {
+  const row = await get(`SELECT COUNT(*) AS count FROM users`);
+  return row ? parseInt(row.count, 10) : 0;
 }
 
 async function getUserById(id) {
@@ -501,23 +367,26 @@ async function listUsers() {
   return rows.map(mapUser);
 }
 
-async function createUser({ name, email, role, status = "active", password }) {
+async function createUser({ name, username, role, status = "active", password, mustChangePassword = 1, tempPasswordExpiresAt = null, createdByAdminId = null }) {
   const id = `u_${crypto.randomUUID().slice(0, 8)}`;
   const createdAt = nowIso();
   await run(
-    `INSERT INTO users (id, name, initials, email, role, status, password_hash, created_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, name, buildInitials(name), email, role, status, hashPassword(password), createdAt, null],
+    `INSERT INTO users (id, username, name, initials, role, status, password_hash, must_change_password, temp_password_expires_at, created_by_admin_id, created_at, last_login_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, username, name, buildInitials(name), role, status, hashPassword(password), mustChangePassword, tempPasswordExpiresAt, createdByAdminId, createdAt, null],
   );
   return getUserById(id);
 }
 
-async function updateUser(id, { name, role, status }) {
+async function updateUser(id, { name, role, status, passwordHash, mustChangePassword, tempPasswordExpiresAt }) {
   const updatedFields = [];
   const params = [];
   if (name !== undefined) { updatedFields.push("name = ?", "initials = ?"); params.push(name, buildInitials(name)); }
   if (role !== undefined) { updatedFields.push("role = ?"); params.push(role); }
   if (status !== undefined) { updatedFields.push("status = ?"); params.push(status); }
+  if (passwordHash !== undefined) { updatedFields.push("password_hash = ?"); params.push(passwordHash); }
+  if (mustChangePassword !== undefined) { updatedFields.push("must_change_password = ?"); params.push(mustChangePassword ? 1 : 0); }
+  if (tempPasswordExpiresAt !== undefined) { updatedFields.push("temp_password_expires_at = ?"); params.push(tempPasswordExpiresAt); }
   if (updatedFields.length === 0) return getUserById(id);
   params.push(id);
   await run(`UPDATE users SET ${updatedFields.join(", ")} WHERE id = ?`, params);
@@ -736,6 +605,11 @@ async function getSubmissionById(id) {
   return mapSubmission(row);
 }
 
+async function getSubmissionByPdfUrl(pdfUrl) {
+  const row = await get(`SELECT * FROM submissions WHERE pdf_url = ?`, [pdfUrl]);
+  return mapSubmission(row);
+}
+
 async function updateSubmissionStatus(id, status, actor, note) {
   const existing = await getSubmissionById(id);
   if (!existing) return null;
@@ -859,9 +733,11 @@ module.exports = {
   deleteSession,
   getSessionUser,
   getSubmissionById,
+  getSubmissionByPdfUrl,
   getTemplateByKey,
   getTemplateVersions,
-  getUserByEmail,
+  getUserByUsername,
+  getUserCount,
   getUserById,
   hashPassword,
   initDB,

@@ -9,8 +9,9 @@ export interface AppUser {
   name: string;
   initials: string;
   role: Role;
-  email: string;
+  username: string;
   status: string;
+  mustChangePassword?: boolean;
   createdAt?: string;
   lastLoginAt?: string | null;
 }
@@ -19,7 +20,7 @@ interface AuthContextValue {
   user: AppUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<AppUser>;
+  login: (username: string, password: string) => Promise<AppUser>;
   logout: () => Promise<void>;
 }
 
@@ -84,13 +85,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (username: string, password: string) => {
     const data = await apiRequest("/api/auth/login", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ username, password }),
     });
 
     const nextSession = { token: data.token, user: data.user };

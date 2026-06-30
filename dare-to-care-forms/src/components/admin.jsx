@@ -596,7 +596,8 @@ function Builder({ templateKey, onClose, onToast }) {
 
 function UsersPage({ onToast }) {
   const [, force] = useState(0);
-  const [form, setForm] = useState({ name: "", email: "", role: "caregiver", password: "welcome123" });
+  const genPass = () => Math.random().toString(36).slice(-6) + Math.random().toString(36).slice(-6);
+  const [form, setForm] = useState({ name: "", username: "", role: "caregiver", password: genPass() });
   const [editUser, setEditUser] = useState(null);
   const [search, setSearch] = useState("");
 
@@ -604,14 +605,14 @@ function UsersPage({ onToast }) {
 
   const users = Store.getUsers();
 
-  const filtered = users.filter((u) => !search || u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()));
+  const filtered = users.filter((u) => !search || u.name.toLowerCase().includes(search.toLowerCase()) || u.username.toLowerCase().includes(search.toLowerCase()));
 
   const doCreate = async () => {
-    if (!form.name || !form.email || !form.password) { onToast("Name, email and password are required"); return; }
+    if (!form.name || !form.username || !form.password) { onToast("Name, username and password are required"); return; }
     try {
       await Store.createUser(form);
-      setForm({ name: "", email: "", role: "caregiver", password: "welcome123" });
-      onToast("User created");
+      onToast(`User created. Temp password: ${form.password}`);
+      setForm({ name: "", username: "", role: "caregiver", password: genPass() });
     } catch (err) { onToast(err.message || "Error creating user"); }
   };
 
@@ -674,7 +675,7 @@ function UsersPage({ onToast }) {
           <div className="admin-panel-head"><div><h3>Invite account</h3><p>Seed a new user with a role and starter password.</p></div></div>
           <div className="admin-form-stack">
             <input className="insp-input" placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            <input className="insp-input" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <input className="insp-input" placeholder="Username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
             <select className="ds-select" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
               <option value="caregiver">Caregiver</option>
               <option value="officeManager">Office Manager</option>
@@ -700,7 +701,7 @@ function UsersPage({ onToast }) {
                 <div className="admin-user-avatar" style={{ opacity: user.status === "inactive" ? 0.4 : 1 }}>{user.initials}</div>
                 <div className="admin-user-copy">
                   <strong>{user.name}</strong>
-                  <span>{user.email}</span>
+                  <span>{user.username}</span>
                   {user.lastLoginAt && <span style={{ fontSize: 11, color: "var(--ink-4)" }}>Last login {relTime(user.lastLoginAt)}</span>}
                 </div>
                 <span className="ui-tag">{user.role}</span>
@@ -710,6 +711,7 @@ function UsersPage({ onToast }) {
                 </button>
               </div>
             ))}
+            {filtered.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>No users found. Create the first user on the left.</div>}
           </div>
         </section>
       </div>
@@ -855,6 +857,7 @@ function ClientsPage({ onToast }) {
                 </div>
               </div>
             ))}
+            {clients.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: 'var(--ink-3)' }}>No clients found. Add a client using the form on the left.</div>}
           </div>
         </section>
       </div>
