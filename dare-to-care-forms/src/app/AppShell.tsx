@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth, type Role } from "./AuthContext";
+// @ts-ignore
+import { DTCStore as Store } from "../components/store";
 
 interface NavItem {
   to: string;
@@ -33,13 +35,31 @@ const navByRole: Record<Role, NavItem[]> = {
     { to: "/office-manager/audit", label: "Audit log", icon: "clock" },
     { to: "/courses", label: "Training Courses", icon: "video" },
   ],
+  newHire: [
+    { to: "/new-hire", label: "Onboarding", icon: "home" },
+    { to: "/new-hire/training", label: "Training", icon: "layers" },
+    { to: "/new-hire/paperwork", label: "Paperwork", icon: "file" },
+  ],
+  client: [
+    { to: "/client", label: "My Forms", icon: "file" },
+    { to: "/client/documents", label: "Documents", icon: "inbox" },
+  ],
 };
 
 const roleLabels: Record<Role, string> = {
-  admin: "Admin",
+  admin: "Administrator",
   caregiver: "Caregiver",
   officeManager: "Office Manager",
+  newHire: "New Hire",
+  client: "Client",
 };
+
+const previewableRoles: { role: Role; label: string; color: string }[] = [
+  { role: "caregiver", label: "Caregiver", color: "#2f8a68" },
+  { role: "officeManager", label: "Office Mgr", color: "#4c8cf3" },
+  { role: "newHire", label: "New Hire", color: "#d7923b" },
+  { role: "client", label: "Client", color: "#8b5cf6" },
+];
 
 function NavIcon({ name }: { name: string }) {
   const svgProps = {
@@ -126,27 +146,58 @@ function NavIcon({ name }: { name: string }) {
       </>
     ),
     chevDown: <path d="M6 9l6 6 6-6" />,
+    eye: <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>,
   };
-
   return <svg {...svgProps}>{icons[name] || null}</svg>;
 }
 
+function useBadgeCounts(role: Role, userId: string) {
+  const [counts, setCounts] = useState({ corrections: 0, pendingReview: 0, queued: 0 });
+  useEffect(() => {
+    const update = () => {
+      const subs = Store.getSubmissions();
+      const queued = Store.getQueuedSubmissions?.() ?? [];
+      if (role === "caregiver") {
+        const corrections = subs.filter((s: any) => s.caregiverId === userId && s.status === "needsCorrection").length;
+        setCounts({ corrections, pendingReview: 0, queued: queued.length });
+      } else {
+        const pendingReview = subs.filter((s: any) => s.status === "submitted").length;
+        setCounts({ corrections: 0, pendingReview, queued: 0 });
+      }
+    };
+    const unsub = Store.subscribe(update);
+    return unsub;
+  }, [role, userId]);
+  return counts;
+}
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, enterPreview, exitPreview, effectiveRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const goOffline = () => setIsOffline(true);
+    const goOnline = () => setIsOffline(false);
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online", goOnline);
+    return () => { window.removeEventListener("offline", goOffline); window.removeEventListener("online", goOnline); };
+  }, []);
+
+  const badges = useBadgeCounts(effectiveRole as Role || "caregiver", user?.id ?? "");
 
   React.useEffect(() => {
     setSidebarOpen(false);
   }, [location.pathname]);
 
-  if (!user) {
-    return <>{children}</>;
-  }
+  if (!user) return <>{children}</>;
 
-  const items = navByRole[user.role] || [];
+  const isPreviewMode = user.role === "admin" && effectiveRole !== "admin" && effectiveRole !== null;
+  const displayRole = (effectiveRole ?? user.role) as Role;
+  const items = navByRole[displayRole] || [];
 
   return (
     <div className="shell">
@@ -171,10 +222,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <img src="/logo.png" alt="Dare to Care" />
           <div>
             <strong>Dare to Care</strong>
-            <span>Forms Platform</span>
+            <span>Home Care Platform</span>
           </div>
         </div>
-        <div className="shell-role-label">{roleLabels[user.role]}</div>
+
+        <div className="shell-role-label">
+          {isPreviewMode ? `Previewing: ${roleLabels[displayRole]}` : roleLabels[displayRole]}
+        </div>
+
         <nav className="shell-nav">
           {items.map((item) => {
             const isRootPath = item.to.split("/").length <= 2;
@@ -182,20 +237,73 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               ? location.pathname === item.to || location.pathname === `${item.to}/`
               : location.pathname.startsWith(item.to);
 
+            let badge = 0;
+            if (displayRole === "caregiver" && item.to.includes("/caregiver") && isRootPath) {
+              badge = badges.corrections + badges.queued;
+            } else if (item.label === "Records") {
+              badge = badges.corrections;
+            } else if (item.label === "Submissions") {
+              badge = badges.pendingReview;
+            }
+
             return (
               <NavLink key={item.to} to={item.to} end={isRootPath} className={({ isActive }) => `shell-nav-item${active || isActive ? " active" : ""}`}>
                 <NavIcon name={item.icon} />
                 <span>{item.label}</span>
+                {badge > 0 && <span className="nav-badge">{badge > 99 ? "99+" : badge}</span>}
               </NavLink>
             );
           })}
         </nav>
+
+        {/* Admin role switcher */}
+        {user.role === "admin" && (
+          <div className="role-switcher">
+            <div className="role-switcher-label">Preview as role</div>
+            <div className="role-switcher-grid">
+              {previewableRoles.map(({ role, label }) => (
+                <button
+                  key={role}
+                  className={`role-chip ${displayRole === role ? "active" : ""}`}
+                  onClick={() => {
+                    if (displayRole === role) {
+                      exitPreview();
+                      navigate("/admin");
+                    } else {
+                      const homePaths: Record<Role, string> = {
+                        admin: "/admin",
+                        caregiver: "/caregiver",
+                        officeManager: "/office-manager",
+                        newHire: "/new-hire",
+                        client: "/client",
+                      };
+                      enterPreview(role);
+                      navigate(homePaths[role]);
+                    }
+                  }}
+                >
+                  <div className="role-chip-dot" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            {isPreviewMode && (
+              <button
+                style={{ width: "100%", marginTop: 8, padding: "7px 10px", borderRadius: 10, fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)", textAlign: "center", border: "1px solid var(--border)" }}
+                onClick={() => { exitPreview(); navigate("/admin"); }}
+              >
+                ← Back to admin
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="shell-sidebar-foot">
           <div className="shell-user" onClick={() => setUserMenuOpen((open) => !open)}>
             <span className="shell-avatar">{user.initials}</span>
             <span className="shell-user-info">
               <strong>{user.name}</strong>
-              <span>{user.username}</span>
+              <span>{isPreviewMode ? `Admin · Previewing ${roleLabels[displayRole]}` : user.username}</span>
             </span>
             <NavIcon name="chevDown" />
           </div>
@@ -215,10 +323,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <main className="shell-main">
+        {isPreviewMode && (
+          <div className="preview-banner">
+            <NavIcon name="eye" />
+            <span>Admin preview mode — viewing as <strong>{roleLabels[displayRole]}</strong>. Changes won't affect real data.</span>
+            <button className="preview-banner-exit" onClick={() => { exitPreview(); navigate("/admin"); }}>
+              Exit preview
+            </button>
+          </div>
+        )}
+        {isOffline && (
+          <div className="offline-banner" role="status">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="1" y1="1" x2="23" y2="23" /><path d="M16.72 11.06A10.94 10.94 0 0119 12.55" /><path d="M5 12.55a10.94 10.94 0 015.17-2.39" /><path d="M10.71 5.05A16 16 0 0122.56 9" /><path d="M1.42 9a15.91 15.91 0 014.7-2.88" /><path d="M8.53 16.11a6 6 0 016.95 0" /><circle cx="12" cy="20" r="1" />
+            </svg>
+            You're offline — forms will be queued and submitted when you reconnect
+          </div>
+        )}
         <div className="shell-main-inner">{children}</div>
         <footer className="shell-footer">
-          <span>Dare to Care · Forms Platform</span>
-          <span>Role-based access · Stored PDFs</span>
+          <span>Dare to Care · Home Care Platform</span>
+          <span>Role-based access · Secure PDFs</span>
         </footer>
       </main>
     </div>

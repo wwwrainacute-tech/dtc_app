@@ -3,7 +3,7 @@ import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebas
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../config/firebase";
 
-export type Role = "admin" | "caregiver" | "officeManager";
+export type Role = "admin" | "caregiver" | "officeManager" | "newHire" | "client";
 
 export interface AppUser {
   id: string;
@@ -15,6 +15,8 @@ export interface AppUser {
   mustChangePassword?: boolean;
   createdAt?: string;
   lastLoginAt?: string | null;
+  /** When admin is previewing another role, this is the true role */
+  previewRole?: Role | null;
 }
 
 interface AuthContextValue {
@@ -23,6 +25,11 @@ interface AuthContextValue {
   isLoading: boolean;
   login: (username: string, password: string) => Promise<AppUser>;
   logout: () => Promise<void>;
+  /** Admin-only: enter preview mode as another role */
+  enterPreview: (role: Role) => void;
+  exitPreview: () => void;
+  /** The effective role (may differ from user.role when previewing) */
+  effectiveRole: Role | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -30,6 +37,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [previewRole, setPreviewRole] = useState<Role | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -56,8 +64,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (username: string, password: string) => {
-    // Note: Firebase expects an email for authentication by default.
-    // Ensure the 'username' used in this app is actually an email address.
     const userCredential = await signInWithEmailAndPassword(auth, username, password);
     const userDoc = await getDoc(doc(db, "users", userCredential.user.uid));
     
@@ -73,19 +79,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await signOut(auth);
+    setPreviewRole(null);
     setUser(null);
   };
 
+  const enterPreview = (role: Role) => {
+    if (user?.role === "admin") setPreviewRole(role);
+  };
+
+  const exitPreview = () => setPreviewRole(null);
+
+  const effectiveRole = previewRole ?? user?.role ?? null;
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isAuthenticated: Boolean(user),
-        isLoading,
-        login,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={{ user, isAuthenticated: Boolean(user), isLoading, login, logout, enterPreview, exitPreview, effectiveRole }}>
       {children}
     </AuthContext.Provider>
   );
@@ -93,8 +100,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error("useAuth must be inside AuthProvider");
-  }
+  if (!ctx) throw new Error("useAuth must be inside AuthProvider");
   return ctx;
 }

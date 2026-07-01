@@ -6,6 +6,8 @@ const homeByRole: Record<Role, string> = {
   admin: "/admin",
   caregiver: "/caregiver",
   officeManager: "/office-manager",
+  newHire: "/new-hire",
+  client: "/client",
 };
 
 export default function LoginPage() {

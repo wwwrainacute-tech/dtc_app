@@ -4,6 +4,51 @@ import { DTC } from "./schemas.js";
 
 const listeners = new Set();
 
+// ─── Offline queue ─────────────────────────────────────────────────────────
+const QUEUE_KEY = "dtc_offline_queue";
+
+function getQueuedSubmissions() {
+  try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); } catch { return []; }
+}
+
+function queueSubmissionOffline(submission) {
+  const queue = getQueuedSubmissions();
+  const item = {
+    id: `offline_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    ...submission,
+    queuedAt: new Date().toISOString(),
+    status: "queued",
+    schemaKey: submission.schemaKey,
+    templateName: submission.templateName || submission.schemaKey,
+    caregiverName: getStoredUser()?.name || "You",
+  };
+  queue.push(item);
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  emit();
+  return item;
+}
+
+function removeFromQueue(id) {
+  const queue = getQueuedSubmissions().filter((item) => item.id !== id);
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+  emit();
+}
+
+async function syncQueue() {
+  const queue = getQueuedSubmissions();
+  if (queue.length === 0) return;
+  let synced = 0;
+  for (const item of queue) {
+    try {
+      const { id: _id, queuedAt: _q, status: _s, templateName: _tn, caregiverName: _cn, ...payload } = item;
+      await apiFetch("/api/submissions", { method: "POST", body: JSON.stringify(payload) });
+      removeFromQueue(item.id);
+      synced++;
+    } catch { /* still offline or server error — leave in queue */ }
+  }
+  if (synced > 0) await refresh();
+}
+
 const referenceLibrary = [
   { id: "lib_fallRisk", file: "Fall_Risk_Assessment.pdf", pages: 1, schemaKey: "fallRisk" },
   { id: "lib_medList", file: "Medication_List.pdf", pages: 1, schemaKey: "medicationList" },
@@ -80,6 +125,7 @@ async function refresh() {
 // In Firebase, we rely on Auth state changes rather than custom events for the most part.
 // But we keep this listener alive for backward compatibility with frontend.
 window.addEventListener("dtc-auth-changed", () => { void refresh(); });
+window.addEventListener("online", () => { void syncQueue().then(() => refresh()); });
 auth.onAuthStateChanged((user) => {
   if (user) void refresh();
   else clearState();
@@ -152,12 +198,16 @@ export const DTCStore = {
 
   // Submissions
   getSubmissions() { return state.submissions.slice(); },
+  getQueuedSubmissions,
 
   async addSubmission(submission) {
     const docRef = await addDoc(collection(db, "submissions"), submission);
     await refresh();
     return { id: docRef.id, ...submission };
   },
+
+  removeFromQueue,
+  async syncQueue() { await syncQueue(); },
 
   async updateSubmission(id, patch) {
     await updateDoc(doc(db, "submissions", id), { status: patch.status });
@@ -197,6 +247,7 @@ export const DTCStore = {
 
   // Users
   getUsers() { return state.users.slice(); },
+  getToken() { return getStoredToken(); },
 
   async createUser(userInput) {
     // Note: Creating a user here requires Firebase Admin SDK or Cloud Function.
@@ -214,6 +265,12 @@ export const DTCStore = {
     return { id, ...patch };
   },
 
+  async resetUserPassword(id, newPassword) {
+    const result = await apiFetch(`/api/admin/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ newPassword }) });
+    await refresh();
+    return result;
+  },
+
   // Clients
   async createClient(clientInput) {
     const docRef = await addDoc(collection(db, "clients"), clientInput);
@@ -225,5 +282,37 @@ export const DTCStore = {
     await updateDoc(doc(db, "clients", id), patch);
     await refresh();
     return { id, ...patch };
+  },
+
+  async getClientAssignments(clientId) {
+    return apiFetch(`/api/clients/${clientId}/assignments`);
+  },
+
+  // Training
+  async getMyTrainingProgress() {
+    const user = auth.currentUser;
+    if (!user) return {};
+    const u = state.users.find((x) => x.id === user.uid);
+    return u?.trainingProgress || {};
+  },
+
+  async completeTrainingModule(moduleId) {
+    const user = auth.currentUser;
+    if (!user) return;
+    await updateDoc(doc(db, "users", user.uid), {
+      [`trainingProgress.${moduleId}`]: new Date().toISOString()
+    });
+    await refresh();
+  },
+
+  async getUserTrainingProgress(userId) {
+    const u = state.users.find((x) => x.id === userId);
+    return { progress: u?.trainingProgress || {} };
+  },
+
+  async updateClientAssignments(clientId, userIds) {
+    const result = await apiFetch(`/api/clients/${clientId}/assignments`, { method: "PUT", body: JSON.stringify({ userIds }) });
+    await refresh();
+    return result;
   },
 };

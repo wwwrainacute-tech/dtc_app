@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { storage } from '../../config/firebase';
 import './VideoPlayer.css'; // Will create a quick stylesheet for styling
@@ -6,9 +6,10 @@ import './VideoPlayer.css'; // Will create a quick stylesheet for styling
 interface VideoPlayerProps {
   storagePath: string;
   title?: string;
+  onEnded?: () => void;
 }
 
-export function VideoPlayer({ storagePath, title }: VideoPlayerProps) {
+export function VideoPlayer({ storagePath, title, onEnded }: VideoPlayerProps) {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,6 +57,7 @@ export function VideoPlayer({ storagePath, title }: VideoPlayerProps) {
           preload="metadata"
           className="styled-video"
           poster="/placeholder-poster.jpg" // Optional placeholder
+          onEnded={onEnded}
         >
           Your browser does not support the video tag.
         </video>

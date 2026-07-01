@@ -30,6 +30,11 @@
   --warn:      #d7923b;
   --warn-soft: #fff4de;
   --warn-line: #efd7aa;
+  /* Aliases used in components */
+  --amber:      #d7923b;
+  --amber-light: #fff4de;
+  --amber-dark:  #8a5200;
+  --red:         #c65353;
   --danger:    #c65353;
   --danger-soft: #fff0f0;
 
@@ -409,6 +414,39 @@ select.input { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://ww
 .subrow .stat { font-family: var(--font-mono); font-size: 9.5px; padding: 3px 8px; border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent-deep); flex: none; }
 
 /* empty state */
+/* Records search + filter */
+.rec-search {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.rec-search:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(47, 138, 104, 0.12);
+}
+.rec-filter {
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  outline: none;
+  flex-shrink: 0;
+}
+.rec-filter:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(47, 138, 104, 0.12);
+}
+
 .empty { text-align: center; padding: 50px 24px; }
 .empty .ei { width: 56px; height: 56px; border-radius: 50%; background: var(--bg-2); color: var(--ink-4); display: grid; place-items: center; margin: 0 auto 14px; }
 .empty h4 { font-size: 15px; margin: 0 0 6px; }
