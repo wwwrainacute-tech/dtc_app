@@ -610,6 +610,14 @@ const ROLE_COLORS = {
   client: "#8b5cf6",
 };
 
+const TRAINING_MODULES = [
+  { id: "emergency", title: "Emergency Preparedness & Disaster Planning" },
+  { id: "home_safety", title: "Home Safety" },
+  { id: "first_aid", title: "First Aid & Basic Life Safety" },
+  { id: "infection", title: "Infection Control" },
+  { id: "consumer_rights", title: "Consumer Rights & Responsibilities" },
+];
+
 function UsersPage({ onToast }) {
   const [, force] = useState(0);
   const [form, setForm] = useState({ name: "", username: "", role: "caregiver", password: "" });
@@ -621,8 +629,21 @@ function UsersPage({ onToast }) {
   const [showPass, setShowPass] = useState(false);
   const [loadingPwd, setLoadingPwd] = useState(false);
   const [loadingSuggest, setLoadingSuggest] = useState(false);
+  const [trainingProgress, setTrainingProgress] = useState(null);
+  const [loadingTraining, setLoadingTraining] = useState(false);
 
   useEffect(() => Store.subscribe(() => force((v) => v + 1)), []);
+
+  useEffect(() => {
+    if (!editUser || editUser.role !== "newHire") { setTrainingProgress(null); return; }
+    let cancelled = false;
+    setLoadingTraining(true);
+    Store.getUserTrainingProgress(editUser.id)
+      .then((data) => { if (!cancelled) setTrainingProgress(data.progress); })
+      .catch(() => { if (!cancelled) setTrainingProgress(null); })
+      .finally(() => { if (!cancelled) setLoadingTraining(false); });
+    return () => { cancelled = true; };
+  }, [editUser?.id, editUser?.role]);
 
   const users = Store.getUsers();
   const filtered = users.filter((u) => {
@@ -801,6 +822,34 @@ function UsersPage({ onToast }) {
               <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 12, background: "rgba(215,146,59,0.07)", border: "1px solid rgba(215,146,59,0.2)", fontSize: 12.5, color: "#8a5c1a" }}>
                 <strong>Reset password?</strong> — Use the "Reset Password" button to set a new temporary password for this user.
               </div>
+
+              {editUser.role === "newHire" && (
+                <div style={{ marginTop: 16 }}>
+                  <div className="form-label" style={{ marginBottom: 8 }}>Training progress</div>
+                  {loadingTraining ? (
+                    <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Loading…</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {TRAINING_MODULES.map((m) => {
+                        const completedAt = trainingProgress?.[m.id];
+                        return (
+                          <div key={m.id} style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between",
+                            padding: "8px 12px", borderRadius: 10,
+                            background: completedAt ? "rgba(47,138,104,0.07)" : "rgba(0,0,0,0.03)",
+                            border: `1px solid ${completedAt ? "rgba(47,138,104,0.2)" : "rgba(0,0,0,0.06)"}`,
+                          }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink-2)" }}>{m.title}</span>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: completedAt ? "var(--accent-2)" : "var(--ink-3)" }}>
+                              {completedAt ? `✓ ${relTime(completedAt)}` : "Not started"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div className="modal-foot">
               <button className="dbtn dbtn-ghost" style={{ marginRight: "auto", color: "var(--danger)", fontSize: 12 }} onClick={() => { setEditUser(null); doResetPassword(editUser.id); }}>Reset password</button>

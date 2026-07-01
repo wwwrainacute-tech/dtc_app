@@ -10,6 +10,7 @@ const {
   createSession, createTask, getTaskById,
   createUser, deleteSession, getSessionUser, getSubmissionById, getSubmissionByPdfUrl,
   getTemplateByKey, getTemplateVersions, getUserByUsername, getUserCount, getUserById,
+  getTrainingProgressForUser, markTrainingModuleComplete,
   importTemplate, initDB, insertSubmission, listAudit, listClientsForUser,
   listSubmissionsForUser, listTasksForUser, listTemplatesForUser, listUsers,
   publishTemplate, resubmitSubmission, saveTemplate, unpublishTemplate,
@@ -21,10 +22,21 @@ const app = express();
 const isNetlifyBlobs = process.env.FILE_STORAGE_PROVIDER === "netlify-blobs";
 const storageRoot = path.join(__dirname, "storage");
 const pdfRoot = path.join(storageRoot, "pdfs");
+const trainingRoot = path.join(storageRoot, "training");
 
 if (!isNetlifyBlobs) {
   fs.mkdirSync(pdfRoot, { recursive: true });
+  fs.mkdirSync(trainingRoot, { recursive: true });
 }
+
+// ─── New-hire training module catalog ──────────────────────────────────────
+const TRAINING_MODULES = {
+  emergency: { title: "Emergency Preparedness & Disaster Planning", file: "emergency.mp4" },
+  home_safety: { title: "Home Safety", file: "home_safety.mp4" },
+  first_aid: { title: "First Aid & Basic Life Safety", file: "first_aid.mp4" },
+  infection: { title: "Infection Control", file: "infection.mp4" },
+  consumer_rights: { title: "Consumer Rights & Responsibilities", file: "consumer_rights.mp4" },
+};
 
 // ─── Basic rate limiter (no extra deps) ────────────────────────────────────
 const loginAttempts = new Map();
@@ -88,6 +100,18 @@ function requireRole(...allowedRoles) {
   };
 }
 
+// <video>/<audio> elements can't set an Authorization header, so this variant
+// also accepts the session token as a query param for media file routes.
+async function requireAuthOrQueryToken(req, res, next) {
+  const token = getBearerToken(req) || (typeof req.query.token === "string" ? req.query.token : null);
+  if (!token) { res.status(401).json({ error: "Authentication required." }); return; }
+  const user = await getSessionUser(token);
+  if (!user) { res.status(401).json({ error: "Session expired. Please sign in again." }); return; }
+  req.authToken = token;
+  req.user = user;
+  next();
+}
+
 // ─── Auth-protected static PDF serving ─────────────────────────────────────
 app.get("/api/files/pdfs/:filename", requireAuth, async (req, res) => {
   try {
@@ -113,6 +137,90 @@ app.get("/api/files/pdfs/:filename", requireAuth, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: "Error retrieving file." });
   }
+});
+
+// ─── Auth-protected training video serving ─────────────────────────────────
+app.get("/api/files/training/:moduleId", requireAuthOrQueryToken, async (req, res) => {
+  try {
+    const trainingModule = TRAINING_MODULES[req.params.moduleId];
+    if (!trainingModule) { res.status(404).json({ error: "Unknown training module." }); return; }
+
+    if (isNetlifyBlobs) {
+      const store = getStore("training");
+      const blob = await store.get(trainingModule.file, { type: "stream" });
+      if (!blob) { res.status(404).json({ error: "Video not found." }); return; }
+      res.setHeader("Content-Type", "video/mp4");
+      blob.pipe(res);
+      return;
+    }
+
+    const filePath = path.join(trainingRoot, trainingModule.file);
+    if (!fs.existsSync(filePath)) { res.status(404).json({ error: "Video not found." }); return; }
+
+    const stat = fs.statSync(filePath);
+    const range = req.headers.range;
+    if (!range) {
+      res.setHeader("Content-Type", "video/mp4");
+      res.setHeader("Content-Length", stat.size);
+      res.setHeader("Accept-Ranges", "bytes");
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+
+    const [startStr, endStr] = range.replace(/bytes=/, "").split("-");
+    const start = parseInt(startStr, 10);
+    const end = endStr ? parseInt(endStr, 10) : stat.size - 1;
+    if (Number.isNaN(start) || start >= stat.size) {
+      res.status(416).setHeader("Content-Range", `bytes */${stat.size}`).end();
+      return;
+    }
+
+    res.writeHead(206, {
+      "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+      "Accept-Ranges": "bytes",
+      "Content-Length": end - start + 1,
+      "Content-Type": "video/mp4",
+    });
+    fs.createReadStream(filePath, { start, end }).pipe(res);
+  } catch (error) {
+    res.status(500).json({ error: "Error retrieving video." });
+  }
+});
+
+// ─── New-hire training progress ────────────────────────────────────────────
+app.get("/api/training/progress", requireAuth, async (req, res) => {
+  try {
+    const progress = await getTrainingProgressForUser(req.user.id);
+    const byModule = {};
+    for (const entry of progress) byModule[entry.moduleId] = entry.completedAt;
+    res.json(byModule);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.post("/api/training/:moduleId/complete", requireAuth, async (req, res) => {
+  try {
+    const trainingModule = TRAINING_MODULES[req.params.moduleId];
+    if (!trainingModule) { res.status(404).json({ error: "Unknown training module." }); return; }
+
+    const progress = await markTrainingModuleComplete(req.user.id, req.params.moduleId);
+    await createAuditEvent({
+      actorId: req.user.id, actorName: req.user.name, role: req.user.role,
+      action: "completed_training_module", targetType: "trainingModule", targetId: req.params.moduleId,
+      targetLabel: trainingModule.title, metadata: {},
+    });
+    res.json(progress);
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+app.get("/api/admin/training/:userId", requireAuth, requireRole("admin"), async (req, res) => {
+  try {
+    const targetUser = await getUserById(req.params.userId);
+    if (!targetUser) { res.status(404).json({ error: "User not found." }); return; }
+    const progress = await getTrainingProgressForUser(req.params.userId);
+    const byModule = {};
+    for (const entry of progress) byModule[entry.moduleId] = entry.completedAt;
+    res.json({ modules: Object.keys(TRAINING_MODULES), progress: byModule });
+  } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
 // ─── PDF generation ─────────────────────────────────────────────────────────

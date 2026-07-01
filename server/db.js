@@ -201,6 +201,11 @@ function mapTask(row) {
   };
 }
 
+function mapTrainingProgress(row) {
+  if (!row) return null;
+  return { id: row.id, userId: row.user_id, moduleId: row.module_id, completedAt: row.completed_at };
+}
+
 function mapAudit(row) {
   if (!row) return null;
   return {
@@ -336,6 +341,18 @@ async function initDB() {
       sections_json TEXT NOT NULL,
       snapshot_by TEXT NOT NULL,
       snapshotted_at TEXT NOT NULL
+    )
+  `);
+
+  // NEW: New-hire training video progress
+  await run(`
+    CREATE TABLE IF NOT EXISTS training_progress (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      module_id TEXT NOT NULL,
+      completed_at TEXT NOT NULL,
+      UNIQUE (user_id, module_id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `);
 
@@ -721,6 +738,32 @@ async function getClientAssignments(clientId) {
   return rows.map((r) => r.user_id);
 }
 
+// ─── Training progress functions ───────────────────────────────────────────
+
+async function markTrainingModuleComplete(userId, moduleId) {
+  const existing = await get(`SELECT * FROM training_progress WHERE user_id = ? AND module_id = ?`, [userId, moduleId]);
+  if (existing) return mapTrainingProgress(existing);
+
+  const id = `tp_${crypto.randomUUID().slice(0, 8)}`;
+  const completedAt = nowIso();
+  try {
+    await run(
+      `INSERT INTO training_progress (id, user_id, module_id, completed_at) VALUES (?, ?, ?, ?)`,
+      [id, userId, moduleId, completedAt],
+    );
+  } catch (err) {
+    const raced = await get(`SELECT * FROM training_progress WHERE user_id = ? AND module_id = ?`, [userId, moduleId]);
+    if (raced) return mapTrainingProgress(raced);
+    throw err;
+  }
+  return { id, userId, moduleId, completedAt };
+}
+
+async function getTrainingProgressForUser(userId) {
+  const rows = await all(`SELECT * FROM training_progress WHERE user_id = ? ORDER BY completed_at ASC`, [userId]);
+  return rows.map(mapTrainingProgress);
+}
+
 // ─── Audit functions ───────────────────────────────────────────────────────
 
 async function createAuditEvent({ actorId = "system", actorName = "System", role = "system", action, targetType, targetId, targetLabel, metadata = {} }) {
@@ -746,6 +789,8 @@ module.exports = {
   updateClientAssignments,
   getClientAssignments,
   getTaskById,
+  getTrainingProgressForUser,
+  markTrainingModuleComplete,
   createSession,
   createTask,
   createUser,

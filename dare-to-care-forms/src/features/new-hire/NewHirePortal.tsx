@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../../app/AuthContext";
+// @ts-ignore
+import { DTCStore as Store } from "../../components/store";
 
 const onboardingSteps = [
   {
@@ -78,6 +80,19 @@ function LockIcon() {
 export default function NewHirePortal() {
   const { user } = useAuth();
   const [completed, setCompleted] = useState<Set<string>>(new Set(["welcome"]));
+  const [activeVideoStep, setActiveVideoStep] = useState<typeof onboardingSteps[number] | null>(null);
+  const [marking, setMarking] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    Store.getMyTrainingProgress()
+      .then((progress: Record<string, string>) => {
+        if (cancelled) return;
+        setCompleted((prev) => new Set([...prev, ...Object.keys(progress)]));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const totalSteps = onboardingSteps.length;
   const completedCount = completed.size;
@@ -85,6 +100,19 @@ export default function NewHirePortal() {
 
   const markDone = (id: string) => {
     setCompleted((prev) => new Set([...prev, id]));
+  };
+
+  const completeTraining = async (moduleId: string) => {
+    setMarking(true);
+    try {
+      await Store.completeTrainingModule(moduleId);
+      markDone(moduleId);
+      setActiveVideoStep(null);
+    } catch {
+      // leave the modal open so the new hire can retry
+    } finally {
+      setMarking(false);
+    }
   };
 
   return (
@@ -136,7 +164,11 @@ export default function NewHirePortal() {
               {!isLocked && (
                 <button
                   className={`newhire-step-action ${isDone ? "done" : ""}`}
-                  onClick={() => !isDone && markDone(step.id)}
+                  onClick={() => {
+                    if (isDone) return;
+                    if (step.training) { setActiveVideoStep(step); return; }
+                    markDone(step.id);
+                  }}
                   disabled={isDone}
                 >
                   {isDone ? "Done ✓" : step.training ? "Start" : step.formKey ? "Fill out" : "Begin"}
@@ -161,6 +193,32 @@ export default function NewHirePortal() {
           <span style={{ color: "var(--ink-3)", fontSize: 13 }}>
             Your administrator will review your progress and upgrade your account to full caregiver access.
           </span>
+        </div>
+      )}
+
+      {activeVideoStep && (
+        <div className="modal-overlay" onClick={() => setActiveVideoStep(null)}>
+          <div className="modal-box" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 720 }}>
+            <div className="modal-head">
+              <h3>{activeVideoStep.title}</h3>
+              <button className="modal-close" onClick={() => setActiveVideoStep(null)}>×</button>
+            </div>
+            <div className="modal-body">
+              <video
+                key={activeVideoStep.id}
+                controls
+                style={{ width: "100%", borderRadius: 12, background: "#000" }}
+                src={`/api/files/training/${activeVideoStep.id}?token=${encodeURIComponent(Store.getToken() || "")}`}
+                onEnded={() => completeTraining(activeVideoStep.id)}
+              />
+            </div>
+            <div className="modal-foot">
+              <button className="dbtn dbtn-ghost" onClick={() => setActiveVideoStep(null)} disabled={marking}>Close</button>
+              <button className="dbtn dbtn-primary" onClick={() => completeTraining(activeVideoStep.id)} disabled={marking}>
+                {marking ? "Saving…" : "Mark as complete"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

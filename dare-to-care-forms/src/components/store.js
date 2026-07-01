@@ -298,6 +298,19 @@ export const DTCStore = {
     return apiFetch(`/api/clients/${clientId}/assignments`);
   },
 
+  // Training
+  async getMyTrainingProgress() {
+    return apiFetch("/api/training/progress");
+  },
+
+  async completeTrainingModule(moduleId) {
+    return apiFetch(`/api/training/${moduleId}/complete`, { method: "POST" });
+  },
+
+  async getUserTrainingProgress(userId) {
+    return apiFetch(`/api/admin/training/${userId}`);
+  },
+
   async updateClientAssignments(clientId, userIds) {
     const result = await apiFetch(`/api/clients/${clientId}/assignments`, { method: "PUT", body: JSON.stringify({ userIds }) });
     await refresh();
