@@ -64,7 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (username: string, password: string) => {
-    const userCredential = await signInWithEmailAndPassword(auth, username, password);
+    // If they didn't type an email address, append our local suffix to trick Firebase Auth
+    const authEmail = username.includes('@') ? username : `${username.toLowerCase()}@daretocare.local`;
+    const userCredential = await signInWithEmailAndPassword(auth, authEmail, password);
     const userDoc = await getDoc(doc(db, "users", userCredential.user.uid));
     
     if (userDoc.exists()) {
