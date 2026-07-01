@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { setDoc, doc, getDocs, collection, limit, query } from "firebase/firestore";
+import { setDoc, doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../config/firebase";
 
 export default function SetupPage() {
@@ -19,12 +19,11 @@ export default function SetupPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check if there are ANY users in the database. If there are, setup is locked.
     const checkSetupStatus = async () => {
       try {
-        const usersSnap = await getDocs(query(collection(db, "users"), limit(1)));
-        if (!usersSnap.empty) {
-          // A user exists, redirect to login
+        const setupSnap = await getDoc(doc(db, "metadata", "setup"));
+        if (setupSnap.exists()) {
+          // Setup is complete, redirect to login
           navigate('/login');
         } else {
           setLoading(false);
@@ -76,7 +75,13 @@ export default function SetupPage() {
         lastLoginAt: new Date().toISOString(),
       });
 
-      // 4. Firebase automatically signs them in! 
+      // 4. Mark setup as complete
+      await setDoc(doc(db, "metadata", "setup"), {
+        completed: true,
+        completedAt: new Date().toISOString()
+      });
+
+      // 5. Firebase automatically signs them in! 
       setStep("done");
       
       // Navigate straight to the admin dashboard after a brief delay

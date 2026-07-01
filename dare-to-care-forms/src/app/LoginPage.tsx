@@ -21,10 +21,10 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    import("firebase/firestore").then(async ({ getDocs, collection, limit, query }) => {
+    import("firebase/firestore").then(async ({ getDoc, doc }) => {
       const { db } = await import("../config/firebase");
-      const usersSnap = await getDocs(query(collection(db, "users"), limit(1)));
-      if (usersSnap.empty) {
+      const setupSnap = await getDoc(doc(db, "metadata", "setup"));
+      if (!setupSnap.exists()) {
         navigate('/setup');
       }
     }).catch(console.error);
