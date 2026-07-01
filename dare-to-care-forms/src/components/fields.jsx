@@ -82,6 +82,7 @@ function SignaturePad({ value, onChange, invalid, suggestName }) {
       img.src = value.dataUrl;
       dirty.current = true;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pos = (e) => {

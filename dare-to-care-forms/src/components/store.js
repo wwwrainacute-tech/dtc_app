@@ -16,22 +16,7 @@ function getQueuedSubmissions() {
   try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); } catch { return []; }
 }
 
-function queueSubmissionOffline(submission) {
-  const queue = getQueuedSubmissions();
-  const item = {
-    id: `offline_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    ...submission,
-    queuedAt: new Date().toISOString(),
-    status: "queued",
-    schemaKey: submission.schemaKey,
-    templateName: submission.templateName || submission.schemaKey,
-    caregiverName: getStoredUser()?.name || "You",
-  };
-  queue.push(item);
-  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-  emit();
-  return item;
-}
+
 
 function removeFromQueue(id) {
   const queue = getQueuedSubmissions().filter((item) => item.id !== id);
@@ -196,7 +181,7 @@ export const DTCStore = {
     return { key, status: "draft" };
   },
 
-  async getTemplateVersions(key) {
+  async getTemplateVersions() {
     // Requires subcollection or complex logic in Firestore. Returning empty for now.
     return [];
   },

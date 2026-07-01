@@ -29,7 +29,7 @@ export default function SetupPage() {
         } else {
           setLoading(false);
         }
-      } catch (err) {
+      } catch {
         setError("Could not connect to database to verify setup status.");
         setLoading(false);
       }

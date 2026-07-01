@@ -222,7 +222,7 @@ function Extracting({ lib, onDone }) {
       if (index >= steps.length) { clearInterval(timer); setTimeout(onDone, 500); }
     }, 520);
     return () => clearInterval(timer);
-  }, [onDone]);
+  }, [onDone, steps.length]);
 
   return (
     <div>
@@ -640,7 +640,7 @@ function UsersPage({ onToast }) {
       .catch(() => { if (!cancelled) setTrainingProgress(null); })
       .finally(() => { if (!cancelled) setLoadingTraining(false); });
     return () => { cancelled = true; };
-  }, [editUser?.id, editUser?.role]);
+  }, [editUser]);
 
   const users = Store.getUsers();
   const filtered = users.filter((u) => {

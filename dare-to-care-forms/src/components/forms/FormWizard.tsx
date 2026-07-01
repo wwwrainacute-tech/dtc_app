@@ -319,7 +319,7 @@ export function FormWizard({
       }));
       return next;
     });
-  }, [client, autoApply, needsClient]);
+  }, [client, autoApply, needsClient, schema.sections]);
 
   const nSec = schema.sections.length;
   const REVIEW = nSec + 1;
@@ -327,7 +327,7 @@ export function FormWizard({
   const total = PDF;
   const setField = (id: string, v: any) => setValues((p: any) => ({ ...p, [id]: v }));
   const scrollTop = () => { if (bodyRef.current) bodyRef.current.scrollTop = 0; };
-  const score = useMemo(() => D.computeScore(schema, values), [values]);
+  const score = useMemo(() => D.computeScore(schema, values), [values, schema]);
 
   const curSection = step >= 1 && step <= nSec ? schema.sections[step - 1] : null;
   const invalidIds = curSection ? D.invalidFieldsInSection(curSection, values) : [];
