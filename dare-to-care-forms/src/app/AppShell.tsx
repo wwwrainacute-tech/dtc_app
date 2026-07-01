@@ -16,12 +16,14 @@ const navByRole: Record<Role, NavItem[]> = {
     { to: "/admin/users", label: "Users", icon: "users" },
     { to: "/admin/clients", label: "Clients", icon: "clients" },
     { to: "/admin/audit", label: "Audit log", icon: "clock" },
+    { to: "/courses", label: "Training Courses", icon: "video" },
   ],
   caregiver: [
     { to: "/caregiver", label: "My Day", icon: "home" },
     { to: "/caregiver/forms", label: "Available Forms", icon: "file" },
     { to: "/caregiver/records", label: "Records", icon: "inbox" },
     { to: "/caregiver/clients", label: "Clients", icon: "users" },
+    { to: "/courses", label: "Training Courses", icon: "video" },
   ],
   officeManager: [
     { to: "/office-manager", label: "Dashboard", icon: "grid" },
@@ -29,6 +31,7 @@ const navByRole: Record<Role, NavItem[]> = {
     { to: "/office-manager/clients", label: "Clients", icon: "clients" },
     { to: "/office-manager/team", label: "Team", icon: "users" },
     { to: "/office-manager/audit", label: "Audit log", icon: "clock" },
+    { to: "/courses", label: "Training Courses", icon: "video" },
   ],
 };
 
@@ -114,6 +117,12 @@ function NavIcon({ name }: { name: string }) {
         <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
         <path d="M16 17l5-5-5-5" />
         <path d="M21 12H9" />
+      </>
+    ),
+    video: (
+      <>
+        <polygon points="23 7 16 12 23 17 23 7" />
+        <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
       </>
     ),
     chevDown: <path d="M6 9l6 6 6-6" />,

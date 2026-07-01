@@ -19,8 +19,12 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch('/api/setup/status').then(r => r.json()).then(data => {
-      if (data.setupRequired) navigate('/setup');
+    import("firebase/firestore").then(async ({ getDocs, collection, limit, query }) => {
+      const { db } = await import("../config/firebase");
+      const usersSnap = await getDocs(query(collection(db, "users"), limit(1)));
+      if (usersSnap.empty) {
+        navigate('/setup');
+      }
     }).catch(console.error);
   }, [navigate]);
 

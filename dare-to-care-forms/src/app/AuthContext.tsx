@@ -1,6 +1,7 @@
-import { createContext, startTransition, useContext, useEffect, useState, type ReactNode } from "react";
-// @ts-ignore
-import { clearStoredSession, emitAuthChanged, getStoredSession, setStoredSession } from "./auth-storage.js";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { auth, db } from "../config/firebase";
 
 export type Role = "admin" | "caregiver" | "officeManager";
 
@@ -26,100 +27,52 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function apiRequest(path: string, init?: RequestInit) {
-  const res = await fetch(path, init);
-  const data = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    throw new Error(data.error || "Request failed.");
-  }
-
-  return data;
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const storedSession = getStoredSession();
-  const [user, setUser] = useState<AppUser | null>(storedSession?.user || null);
-  const [isLoading, setIsLoading] = useState(Boolean(storedSession?.token));
+  const [user, setUser] = useState<AppUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const session = getStoredSession();
-    if (!session?.token) {
-      setIsLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    apiRequest("/api/auth/me", {
-      headers: {
-        Authorization: `Bearer ${session.token}`,
-      },
-    })
-      .then((data) => {
-        if (cancelled) {
-          return;
-        }
-
-        const nextSession = { token: session.token, user: data.user };
-        setStoredSession(nextSession);
-        startTransition(() => {
-          setUser(data.user);
-        });
-      })
-      .catch(() => {
-        clearStoredSession();
-        if (!cancelled) {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data() as Omit<AppUser, "id">;
+            setUser({ ...data, id: firebaseUser.uid });
+          } else {
+            setUser(null);
+          }
+        } catch (error) {
+          console.error("Error fetching user profile:", error);
           setUser(null);
         }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoading(false);
-          emitAuthChanged();
-        }
-      });
+      } else {
+        setUser(null);
+      }
+      setIsLoading(false);
+    });
 
-    return () => {
-      cancelled = true;
-    };
+    return unsubscribe;
   }, []);
 
   const login = async (username: string, password: string) => {
-    const data = await apiRequest("/api/auth/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ username, password }),
-    });
-
-    const nextSession = { token: data.token, user: data.user };
-    setStoredSession(nextSession);
-    emitAuthChanged();
-    startTransition(() => {
-      setUser(data.user);
-    });
-    return data.user;
+    // Note: Firebase expects an email for authentication by default.
+    // Ensure the 'username' used in this app is actually an email address.
+    const userCredential = await signInWithEmailAndPassword(auth, username, password);
+    const userDoc = await getDoc(doc(db, "users", userCredential.user.uid));
+    
+    if (userDoc.exists()) {
+      const data = userDoc.data() as Omit<AppUser, "id">;
+      const appUser = { ...data, id: userCredential.user.uid };
+      setUser(appUser);
+      return appUser;
+    } else {
+      throw new Error("User profile not found in database.");
+    }
   };
 
   const logout = async () => {
-    const session = getStoredSession();
-    try {
-      if (session?.token) {
-        await apiRequest("/api/auth/logout", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.token}`,
-          },
-        });
-      }
-    } catch {
-      // Local cleanup still matters even if the session already expired.
-    }
-
-    clearStoredSession();
-    emitAuthChanged();
+    await signOut(auth);
     setUser(null);
   };
 

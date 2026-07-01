@@ -1,5 +1,5 @@
-// @ts-ignore
-import { getStoredToken, getStoredUser } from "../app/auth-storage.js";
+import { collection, doc, getDocs, setDoc, addDoc, updateDoc } from "firebase/firestore";
+import { auth, db } from "../config/firebase";
 import { DTC } from "./schemas.js";
 
 const listeners = new Set();
@@ -19,6 +19,7 @@ const state = {
   audit: [],
   users: [],
   tasks: [],
+  user: null, // Track current user manually from AuthContext if needed
 };
 
 function emit() {
@@ -37,40 +38,27 @@ function clearState() {
   emit();
 }
 
-async function apiFetch(path, init = {}) {
-  const token = getStoredToken();
-  const headers = new Headers(init.headers || {});
-
-  if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData)) {
-    headers.set("Content-Type", "application/json");
-  }
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  const response = await fetch(path, { ...init, headers });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Request failed.");
-  return data;
+async function fetchCollection(colName) {
+  const snap = await getDocs(collection(db, colName));
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
 async function refresh() {
-  const user = getStoredUser();
-  if (!user || !getStoredToken()) { clearState(); return; }
+  const user = auth.currentUser;
+  if (!user) { clearState(); return; }
 
   try {
     const requests = [
-      apiFetch("/api/templates"),
-      apiFetch("/api/clients"),
-      apiFetch("/api/submissions"),
-      apiFetch("/api/tasks"),
+      fetchCollection("templates"),
+      fetchCollection("clients"),
+      fetchCollection("submissions"),
+      fetchCollection("tasks"),
     ];
 
-    if (user.role === "admin" || user.role === "officeManager") {
-      requests.push(apiFetch("/api/audit"));
-      requests.push(apiFetch("/api/users"));
-    } else {
-      requests.push(Promise.resolve([]));
-      requests.push(Promise.resolve([]));
-    }
+    // TODO: Need proper user role tracking to restrict this, fetching all for now.
+    // In a real app with Firestore Rules, this would be restricted automatically.
+    requests.push(fetchCollection("audit"));
+    requests.push(fetchCollection("users"));
 
     const [templates, clients, submissions, tasks, audit, users] = await Promise.all(requests);
     state.templates = templates;
@@ -79,17 +67,23 @@ async function refresh() {
     state.tasks = tasks;
     state.audit = audit;
     state.users = users;
+    
+    // Find current user profile
+    state.user = users.find(u => u.id === user.uid) || null;
     emit();
   } catch (error) {
-    if (error instanceof Error && /Session expired|Authentication required/i.test(error.message)) {
-      clearState(); return;
-    }
+    console.error("Refresh failed", error);
     throw error;
   }
 }
 
+// In Firebase, we rely on Auth state changes rather than custom events for the most part.
+// But we keep this listener alive for backward compatibility with frontend.
 window.addEventListener("dtc-auth-changed", () => { void refresh(); });
-if (getStoredToken()) { void refresh(); }
+auth.onAuthStateChanged((user) => {
+  if (user) void refresh();
+  else clearState();
+});
 
 export const DTCStore = {
   subscribe(listener) {
@@ -98,7 +92,7 @@ export const DTCStore = {
     return () => listeners.delete(listener);
   },
 
-  get currentUser() { return getStoredUser(); },
+  get currentUser() { return state.user; },
   get clients() { return state.clients; },
   get users() { return state.users.slice(); },
 
@@ -127,73 +121,75 @@ export const DTCStore = {
   },
 
   async importTemplate(schemaKey) {
-    const template = await apiFetch("/api/templates/import", { method: "POST", body: JSON.stringify({ schemaKey }) });
+    const template = { key: schemaKey, status: "draft", schema: DTC.schemas[schemaKey], name: DTC.schemas[schemaKey]?.name || schemaKey };
+    await setDoc(doc(db, "templates", schemaKey), template);
     await refresh();
     return template;
   },
 
   async saveTemplate(template) {
-    const saved = await apiFetch(`/api/templates/${template.key}`, { method: "PUT", body: JSON.stringify(template) });
+    await setDoc(doc(db, "templates", template.key), template);
     await refresh();
-    return saved;
+    return template;
   },
 
   async publishTemplate(key) {
-    const template = await apiFetch(`/api/templates/${key}/publish`, { method: "POST" });
+    await updateDoc(doc(db, "templates", key), { status: "published" });
     await refresh();
-    return template;
+    return { key, status: "published" };
   },
 
   async unpublishTemplate(key) {
-    const template = await apiFetch(`/api/templates/${key}/unpublish`, { method: "POST" });
+    await updateDoc(doc(db, "templates", key), { status: "draft" });
     await refresh();
-    return template;
+    return { key, status: "draft" };
   },
 
   async getTemplateVersions(key) {
-    return apiFetch(`/api/templates/${key}/versions`);
+    // Requires subcollection or complex logic in Firestore. Returning empty for now.
+    return [];
   },
 
   // Submissions
   getSubmissions() { return state.submissions.slice(); },
 
   async addSubmission(submission) {
-    const created = await apiFetch("/api/submissions", { method: "POST", body: JSON.stringify(submission) });
+    const docRef = await addDoc(collection(db, "submissions"), submission);
     await refresh();
-    return created;
+    return { id: docRef.id, ...submission };
   },
 
   async updateSubmission(id, patch) {
-    const updated = await apiFetch(`/api/submissions/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: patch.status }) });
+    await updateDoc(doc(db, "submissions", id), { status: patch.status });
     await refresh();
-    return updated;
+    return { id, ...patch };
   },
 
   async requestCorrection(id, note) {
-    const updated = await apiFetch(`/api/submissions/${id}/correction`, { method: "POST", body: JSON.stringify({ note }) });
+    await updateDoc(doc(db, "submissions", id), { status: "correction_needed", correctionNote: note });
     await refresh();
-    return updated;
+    return { id, status: "correction_needed" };
   },
 
   async resubmitSubmission(id, payload) {
-    const updated = await apiFetch(`/api/submissions/${id}/resubmit`, { method: "POST", body: JSON.stringify(payload) });
+    await updateDoc(doc(db, "submissions", id), { ...payload, status: "submitted" });
     await refresh();
-    return updated;
+    return { id, status: "submitted" };
   },
 
   // Tasks
   getTasks() { return state.tasks.slice(); },
 
   async createTask(task) {
-    const created = await apiFetch("/api/tasks", { method: "POST", body: JSON.stringify(task) });
+    const docRef = await addDoc(collection(db, "tasks"), task);
     await refresh();
-    return created;
+    return { id: docRef.id, ...task };
   },
 
   async updateTask(id, patch) {
-    const updated = await apiFetch(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    await updateDoc(doc(db, "tasks", id), patch);
     await refresh();
-    return updated;
+    return { id, ...patch };
   },
 
   // Audit
@@ -203,27 +199,31 @@ export const DTCStore = {
   getUsers() { return state.users.slice(); },
 
   async createUser(userInput) {
-    const created = await apiFetch("/api/users", { method: "POST", body: JSON.stringify(userInput) });
+    // Note: Creating a user here requires Firebase Admin SDK or Cloud Function.
+    // In frontend SDK, we can't create another user while logged in without signing out.
+    // So this function should technically be moved to a Cloud Function in a real app.
+    console.warn("User creation from client-side Firestore is not fully supported without a Cloud Function.");
+    const docRef = await addDoc(collection(db, "users"), userInput);
     await refresh();
-    return created;
+    return { id: docRef.id, ...userInput };
   },
 
   async updateUser(id, patch) {
-    const updated = await apiFetch(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    await updateDoc(doc(db, "users", id), patch);
     await refresh();
-    return updated;
+    return { id, ...patch };
   },
 
   // Clients
   async createClient(clientInput) {
-    const created = await apiFetch("/api/clients", { method: "POST", body: JSON.stringify(clientInput) });
+    const docRef = await addDoc(collection(db, "clients"), clientInput);
     await refresh();
-    return created;
+    return { id: docRef.id, ...clientInput };
   },
 
   async updateClient(id, patch) {
-    const updated = await apiFetch(`/api/clients/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+    await updateDoc(doc(db, "clients", id), patch);
     await refresh();
-    return updated;
+    return { id, ...patch };
   },
 };

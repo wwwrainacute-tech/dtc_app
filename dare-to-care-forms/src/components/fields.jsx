@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { DTCStore } from './store.js';
+import React, { useEffect, useRef } from 'react';
 import { DTC } from './schemas.js';
 /* ============================================================
    Dare to Care — shared field renderer + signature pad.
@@ -214,7 +213,7 @@ function TableField({ field, value, onChange }) {
 }
 
 /* ---- The shared FieldRenderer ---- */
-function FieldRenderer({ field, value, onChange, ctx, invalid, score }) {
+function FieldRenderer({ field, value, onChange, ctx, invalid }) {
   const setVal = (v) => onChange(field.id, v);
 
   // policyText is its own block (no label row)

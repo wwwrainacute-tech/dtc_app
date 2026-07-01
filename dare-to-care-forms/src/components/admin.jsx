@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { Icon } from "./fields.jsx";
 import { AdminDashboard } from "../features/admin/AdminDashboard.tsx";
 import { DTCStore as Store } from "./store.js";
-import { DTC as D } from "./schemas.js";
 import { fmtDate } from "../utils/format.ts";
 
 const relTime = (iso) => {

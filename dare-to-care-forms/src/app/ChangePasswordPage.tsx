@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
-// @ts-ignore
-import { getStoredSession } from './auth-storage.js';
+
 
 export default function ChangePasswordPage() {
   const [newPassword, setNewPassword] = useState('');
@@ -31,22 +30,16 @@ export default function ChangePasswordPage() {
     }
 
     try {
-      const session = getStoredSession();
-      if (!session?.token) throw new Error("Not authenticated");
+      const { updatePassword } = await import('firebase/auth');
+      const { auth, db } = await import('../config/firebase');
+      const { doc, updateDoc } = await import('firebase/firestore');
 
-      const res = await fetch('/api/auth/change-password', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.token}`
-        },
-        body: JSON.stringify({ newPassword })
+      if (!auth.currentUser) throw new Error("Not authenticated");
+
+      await updatePassword(auth.currentUser, newPassword);
+      await updateDoc(doc(db, "users", auth.currentUser.uid), {
+        mustChangePassword: false
       });
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to change password.");
-      }
       
       // Logout to force them to use their new password
       await logout();

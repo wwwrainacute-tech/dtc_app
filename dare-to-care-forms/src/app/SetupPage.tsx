@@ -11,20 +11,21 @@ export default function SetupPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch('/api/setup/status')
-      .then(res => res.json())
-      .then(data => {
-        if (!data.setupRequired) {
+    import("firebase/firestore").then(async ({ getDocs, collection, limit, query }) => {
+      try {
+        const { db } = await import("../config/firebase");
+        const usersSnap = await getDocs(query(collection(db, "users"), limit(1)));
+        if (!usersSnap.empty) {
           navigate('/login');
         } else {
           setSetupRequired(true);
           setLoading(false);
         }
-      })
-      .catch(() => {
-        setError("Could not connect to the server.");
+      } catch {
+        setError("Could not connect to Firebase.");
         setLoading(false);
-      });
+      }
+    }).catch(console.error);
   }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -37,16 +38,29 @@ export default function SetupPage() {
     }
 
     try {
-      const res = await fetch('/api/setup/first-admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, username, password })
-      });
-      const data = await res.json();
+      const { createUserWithEmailAndPassword } = await import("firebase/auth");
+      const { setDoc, doc } = await import("firebase/firestore");
+      const { auth, db } = await import("../config/firebase");
+
+      // In Firebase, username acts as the email
+      const userCred = await createUserWithEmailAndPassword(auth, username, password);
       
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to complete setup.");
-      }
+      const initials = name.split(' ').map(s => s[0]).join('').toUpperCase().slice(0, 2) || '?';
+      
+      await setDoc(doc(db, "users", userCred.user.uid), {
+        name,
+        username,
+        initials,
+        role: "admin",
+        status: "active",
+        mustChangePassword: false,
+        createdAt: new Date().toISOString(),
+        lastLoginAt: null
+      });
+
+      // Firebase automatically signs them in after creation, so we can just log them out for a fresh start or let them proceed.
+      // We'll just sign them out and let them log in normally.
+      await auth.signOut();
       
       navigate('/login', { state: { message: "Setup complete! Please log in." } });
     } catch (err: any) {

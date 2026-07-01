@@ -18,6 +18,7 @@ A role-based care-operations platform for managing clinical forms, supervisory v
 
 For production deployment on Netlify, please refer to our full **[Netlify Deployment Guide](DEPLOY_NETLIFY.md)** and the **[Launch Checklist](NETLIFY_LAUNCH_CHECKLIST.md)**.
 
+Before rolling out to your team, be sure to read the **[First-Time Setup Guide](FIRST_TIME_SETUP.md)** to configure your initial administrator account.
 
 ---
 
@@ -127,7 +128,6 @@ dtc app/
 │       │   └── office-manager/
 │       ├── components/      # Shared UI (wizard, fields, admin panels)
 │       └── styles/          # Global CSS
-├── uploads/                 # Uploaded PDF files (gitignored)
 └── .env.example
 ```
 

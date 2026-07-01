@@ -6,6 +6,7 @@ import SetupPage from './app/SetupPage';
 import ChangePasswordPage from './app/ChangePasswordPage';
 import AppShell from './app/AppShell';
 import ProtectedRoute from './app/ProtectedRoute';
+import CoursesPage from './app/CoursesPage';
 import { CaregiverDashboard } from './features/caregiver/CaregiverDashboard';
 // @ts-ignore
 import { AdminApp } from './components/admin.jsx';
@@ -106,6 +107,13 @@ export default function App() {
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/change-password" element={<ChangePasswordPage />} />
           <Route path="/" element={<RoleRedirect />} />
+
+          {/* Courses (All Roles) */}
+          <Route path="/courses" element={
+            <ProtectedRoute allowedRoles={['admin', 'caregiver', 'officeManager']}>
+              <AppShell><CoursesPage /></AppShell>
+            </ProtectedRoute>
+          } />
 
           {/* Admin */}
           <Route path="/admin" element={
