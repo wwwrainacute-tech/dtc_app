@@ -1,5 +1,10 @@
 import { collection, doc, getDocs, setDoc, addDoc, updateDoc } from "firebase/firestore";
-import { auth, db } from "../config/firebase";
+import { auth, db, firebaseConfig } from "../config/firebase";
+import { initializeApp } from "firebase/app";
+import { getAuth, createUserWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+
+const secondaryApp = initializeApp(firebaseConfig, "Secondary");
+const secondaryAuth = getAuth(secondaryApp);
 import { DTC } from "./schemas.js";
 
 const listeners = new Set();
@@ -41,7 +46,7 @@ async function syncQueue() {
   for (const item of queue) {
     try {
       const { id: _id, queuedAt: _q, status: _s, templateName: _tn, caregiverName: _cn, ...payload } = item;
-      await apiFetch("/api/submissions", { method: "POST", body: JSON.stringify(payload) });
+      await addDoc(collection(db, "submissions"), payload);
       removeFromQueue(item.id);
       synced++;
     } catch { /* still offline or server error — leave in queue */ }
@@ -250,13 +255,21 @@ export const DTCStore = {
   getToken() { return getStoredToken(); },
 
   async createUser(userInput) {
-    // Note: Creating a user here requires Firebase Admin SDK or Cloud Function.
-    // In frontend SDK, we can't create another user while logged in without signing out.
-    // So this function should technically be moved to a Cloud Function in a real app.
-    console.warn("User creation from client-side Firestore is not fully supported without a Cloud Function.");
-    const docRef = await addDoc(collection(db, "users"), userInput);
+    const { email, password, ...rest } = userInput;
+    const userCred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    const initials = rest.name.split(' ').map(s => s[0]).join('').toUpperCase().slice(0, 2) || '?';
+    const docData = {
+      ...rest,
+      email: email.toLowerCase(),
+      initials,
+      status: "active",
+      mustChangePassword: true, // Force new users to change their password
+      createdAt: new Date().toISOString(),
+      lastLoginAt: null
+    };
+    await setDoc(doc(db, "users", userCred.user.uid), docData);
     await refresh();
-    return { id: docRef.id, ...userInput };
+    return { id: userCred.user.uid, ...docData };
   },
 
   async updateUser(id, patch) {
@@ -265,10 +278,8 @@ export const DTCStore = {
     return { id, ...patch };
   },
 
-  async resetUserPassword(id, newPassword) {
-    const result = await apiFetch(`/api/admin/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ newPassword }) });
-    await refresh();
-    return result;
+  async sendPasswordReset(email) {
+    await sendPasswordResetEmail(auth, email);
   },
 
   // Clients
@@ -285,7 +296,8 @@ export const DTCStore = {
   },
 
   async getClientAssignments(clientId) {
-    return apiFetch(`/api/clients/${clientId}/assignments`);
+    const client = state.clients.find(c => c.id === clientId);
+    return { assignments: client?.assignedUsers || [] };
   },
 
   // Training
@@ -311,8 +323,8 @@ export const DTCStore = {
   },
 
   async updateClientAssignments(clientId, userIds) {
-    const result = await apiFetch(`/api/clients/${clientId}/assignments`, { method: "PUT", body: JSON.stringify({ userIds }) });
+    await updateDoc(doc(db, "clients", clientId), { assignedUsers: userIds });
     await refresh();
-    return result;
+    return { assignments: userIds };
   },
 };

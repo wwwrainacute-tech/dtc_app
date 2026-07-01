@@ -619,15 +619,13 @@ const TRAINING_MODULES = [
 
 function UsersPage({ onToast }) {
   const [, force] = useState(0);
-  const [form, setForm] = useState({ name: "", username: "", role: "caregiver", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", role: "caregiver", password: "" });
   const [editUser, setEditUser] = useState(null);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [createdUser, setCreatedUser] = useState(null); // shown in success modal
-  const [revealedPassword, setRevealedPassword] = useState(null); // { user, data }
   const [showPass, setShowPass] = useState(false);
   const [loadingPwd, setLoadingPwd] = useState(false);
-  const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [trainingProgress, setTrainingProgress] = useState(null);
   const [loadingTraining, setLoadingTraining] = useState(false);
 
@@ -649,45 +647,25 @@ function UsersPage({ onToast }) {
     if (roleFilter !== "all" && u.role !== roleFilter) return false;
     if (!search) return true;
     const q = search.toLowerCase();
-    return u.name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q);
+    return u.name.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q);
   });
 
-  const suggestUsername = async (name) => {
-    if (!name || name.trim().split(/\s+/).length < 2) return;
-    setLoadingSuggest(true);
-    try {
-      const r = await fetch(`/api/admin/suggest-username?name=${encodeURIComponent(name)}`, {
-        headers: { Authorization: `Bearer ${Store.getToken()}` },
-      });
-      if (r.ok) {
-        const d = await r.json();
-        setForm((f) => ({ ...f, username: d.suggestion }));
-      }
-    } catch { /* ignore */ }
-    setLoadingSuggest(false);
-  };
-
-  const generatePassword = async () => {
+  const generatePassword = () => {
     setLoadingPwd(true);
-    try {
-      const r = await fetch("/api/admin/generate-password", {
-        headers: { Authorization: `Bearer ${Store.getToken()}` },
-      });
-      if (r.ok) {
-        const d = await r.json();
-        setForm((f) => ({ ...f, password: d.password }));
-        setShowPass(true);
-      }
-    } catch { /* ignore */ }
+    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+    let pwd = "";
+    for (let i = 0; i < 12; i++) pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    setForm((f) => ({ ...f, password: pwd }));
+    setShowPass(true);
     setLoadingPwd(false);
   };
 
   const doCreate = async () => {
-    if (!form.name || !form.username || !form.password) { onToast("Name, username and password are required"); return; }
+    if (!form.name || !form.email || !form.password) { onToast("Name, email and password are required"); return; }
     try {
       const created = await Store.createUser(form);
       setCreatedUser({ ...created, tempPassword: form.password });
-      setForm({ name: "", username: "", role: "caregiver", password: "" });
+      setForm({ name: "", email: "", role: "caregiver", password: "" });
       setShowPass(false);
     } catch (err) { onToast(err.message || "Error creating user"); }
   };
@@ -701,24 +679,15 @@ function UsersPage({ onToast }) {
     } catch (err) { onToast(err.message || "Error"); }
   };
 
-  const revealPassword = async (user) => {
-    try {
-      const r = await fetch(`/api/admin/users/${user.id}/reveal-password`, {
-        headers: { Authorization: `Bearer ${Store.getToken()}` },
-      });
-      const d = await r.json();
-      setRevealedPassword({ user, data: d });
-    } catch { onToast("Could not reveal password"); }
-  };
-
   const doResetPassword = async (userId) => {
-    const newPassword = prompt("Enter new temporary password for this user (min 10 characters):");
-    if (!newPassword) return;
-    if (newPassword.length < 10) { onToast("Password must be at least 10 characters"); return; }
-    try {
-      await Store.resetUserPassword(userId, newPassword);
-      onToast("Password reset. User will be required to change it on next login.");
-    } catch (err) { onToast(err.message || "Error resetting password"); }
+    const user = users.find(u => u.id === userId);
+    if (!user || !user.email) { onToast("User does not have an email address."); return; }
+    if (confirm(`Send a password reset email to ${user.email}?`)) {
+      try {
+        await Store.sendPasswordReset(user.email);
+        onToast("Password reset email sent. User will receive instructions.");
+      } catch (err) { onToast(err.message || "Error sending reset email"); }
+    }
   };
 
   return (
@@ -737,7 +706,7 @@ function UsersPage({ onToast }) {
                   {createdUser.initials}
                 </div>
                 <strong style={{ display: "block", fontSize: 16, marginBottom: 4 }}>{createdUser.name}</strong>
-                <span style={{ fontSize: 12, color: "var(--ink-3)" }}>@{createdUser.username} · {ROLE_LABELS[createdUser.role] || createdUser.role}</span>
+                <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{createdUser.email} · {ROLE_LABELS[createdUser.role] || createdUser.role}</span>
               </div>
               <div style={{ background: "rgba(47,138,104,0.07)", border: "1px solid rgba(47,138,104,0.2)", borderRadius: 14, padding: "16px 18px", marginTop: 4 }}>
                 <div style={{ fontSize: 11, fontWeight: 750, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--ink-3)", marginBottom: 8 }}>Temporary password — share with user</div>
@@ -819,7 +788,7 @@ function UsersPage({ onToast }) {
                 </select>
               </div>
               <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 12, background: "rgba(215,146,59,0.07)", border: "1px solid rgba(215,146,59,0.2)", fontSize: 12.5, color: "#8a5c1a" }}>
-                <strong>Reset password?</strong> — Use the "Reset Password" button to set a new temporary password for this user.
+                <strong>Reset password?</strong> — Use the "Reset Password" button to email them a secure reset link.
               </div>
 
               {editUser.role === "newHire" && (
@@ -880,16 +849,16 @@ function UsersPage({ onToast }) {
                 placeholder="e.g. Jane Smith"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                onBlur={(e) => suggestUsername(e.target.value)}
               />
             </div>
             <div>
-              <label className="form-label" style={{ display: "block", marginBottom: 6 }}>Username {loadingSuggest && <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Suggesting…</span>}</label>
+              <label className="form-label" style={{ display: "block", marginBottom: 6 }}>Email address</label>
               <input
                 className="insp-input"
-                placeholder="auto-suggested from name"
-                value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value.toLowerCase().replace(/\s/g, "") })}
+                type="email"
+                placeholder="e.g. jane@daretocare.com"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value.toLowerCase().replace(/\s/g, "") })}
               />
             </div>
             <div>
